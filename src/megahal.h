@@ -20,22 +20,12 @@
  *  Oct 2023 - Modified by wootguy
  */
 
-
-void megahal_setnoprompt (void);
-void megahal_setnowrap (void);
-void megahal_setnobanner (void);
-
-void megahal_seterrorfile(char *filename);
-void megahal_setstatusfile(char *filename);
-
-void megahal_initialize(void);
+void megahal_initialize(const char* directory);
 
 char *megahal_initial_greeting(void);
 
-int megahal_command(char *input);
+char *megahal_do_reply(char *input);
 
-char *megahal_do_reply(char *input, int log);
-void megahal_learn_no_reply(char *input, int log);
-void megahal_output(char *output);
+void megahal_learn_no_reply(char *input);
 
-void megahal_cleanup(void);
+void megahal_save_model(char* modelname);

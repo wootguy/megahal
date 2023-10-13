@@ -25,256 +25,146 @@
 #include "megahal.h"
 #include <chrono>
 #include <thread>
+#include <string>
 
-#define P_THINK 40
-#define D_KEY 100000
-#define V_KEY 50000
-#define D_THINK 500000
-#define V_THINK 250000
+using namespace std;
 
 #define MIN(a,b) ((a)<(b))?(a):(b)
 
 #define COOKIE "MegaHALv8"
 #define TIMEOUT 1
 
-#define DEFAULT "."
-
-#define COMMAND_SIZE (sizeof(command)/sizeof(command[0]))
-
-#define SEP "/"
-
 typedef struct {
     uint8_t length;
-    char *word;
-} STRING;
+    char* word;
+} HAL_STRING;
 
 typedef struct {
     uint32_t size;
-    STRING *entry;
-    uint16_t *index;
-} DICTIONARY;
-
-typedef struct {
-    uint16_t size;
-    STRING *from;
-    STRING *to;
-} SWAP;
+    HAL_STRING* entry;
+    uint16_t* index;
+} HAL_DICTIONARY;
 
 typedef struct NODE {
     uint16_t symbol;
     uint32_t usage;
     uint16_t count;
     uint16_t branch;
-    struct NODE **tree;
-} TREE;
+    struct NODE** tree;
+} HAL_TREE;
 
 typedef struct {
     uint8_t order;
-    TREE *forward;
-    TREE *backward;
-    TREE **context;
-    DICTIONARY *dictionary;
-} MODEL;
-
-typedef enum { UNKNOWN, QUIT, EXIT, SAVE, DELAY, HELP, BRAIN, QUIET} COMMAND_WORDS;
+    HAL_TREE* forward;
+    HAL_TREE* backward;
+    HAL_TREE** context;
+    HAL_DICTIONARY* dictionary;
+} HAL_MODEL;
 
 typedef struct {
-    STRING word;
-    char *helpstring;
-    COMMAND_WORDS command;
-} COMMAND;
+    uint16_t size;
+    HAL_STRING *from;
+    HAL_STRING *to;
+} SWAP;
 
 /*===========================================================================*/
 
-static int width=75;
 static int order=5;
 
-static bool typing_delay=false;
-static bool noprompt=false;
-static bool quiet=false;
-static bool nowrap=false;
-static bool nobanner=false;
+static HAL_DICTIONARY *words=NULL;
+static HAL_DICTIONARY *greets=NULL;
+static HAL_MODEL *model=NULL;
 
-static char *errorfilename = "megahal.log";
-static char *statusfilename = "megahal.txt";
-static DICTIONARY *words=NULL;
-static DICTIONARY *greets=NULL;
-static MODEL *model=NULL;
-
-static FILE *errorfp;
-static FILE *statusfp;
-
-static DICTIONARY *ban=NULL;
-static DICTIONARY *aux=NULL;
-static DICTIONARY *grt=NULL;
+static HAL_DICTIONARY *ban=NULL;
+static HAL_DICTIONARY *aux=NULL;
+static HAL_DICTIONARY *grt=NULL;
 static SWAP *swp=NULL;
 static bool used_key;
-static char *directory=NULL;
 static char *last=NULL;
-
-static COMMAND command[] = {
-    { { 4, "QUIT" }, "quits the program and saves MegaHAL's brain", QUIT },
-    { { 4, "EXIT" }, "exits the program *without* saving MegaHAL's brain", EXIT },
-    { { 4, "SAVE" }, "saves the current MegaHAL brain", SAVE },
-    { { 5, "DELAY" }, "toggles MegaHAL's typing delay (off by default)", DELAY },
-    { { 5, "BRAIN" }, "change to another MegaHAL personality", BRAIN },
-    { { 4, "HELP" }, "displays this message", HELP },
-    { { 5, "QUIET" }, "toggles MegaHAL's responses (on by default)",QUIET},
-};
 
 /* FIXME - these need to be static  */
 
-static void add_aux(MODEL *, DICTIONARY *, STRING);
-static void add_key(MODEL *, DICTIONARY *, STRING);
-static void add_node(TREE *, TREE *, int);
+static void add_aux(HAL_MODEL *, HAL_DICTIONARY *, HAL_STRING);
+static void add_key(HAL_MODEL *, HAL_DICTIONARY *, HAL_STRING);
+static void add_node(HAL_TREE *, HAL_TREE *, int);
 static void add_swap(SWAP *, char *, char *);
-static TREE *add_symbol(TREE *, uint16_t);
-static uint16_t add_word(DICTIONARY *, STRING);
-static int babble(MODEL *, DICTIONARY *, DICTIONARY *);
+static HAL_TREE *add_symbol(HAL_TREE *, uint16_t);
+static uint16_t add_word(HAL_DICTIONARY *, HAL_STRING);
+static int babble(HAL_MODEL *, HAL_DICTIONARY *, HAL_DICTIONARY *);
 static bool boundary(char *, int);
 static void capitalize(char *);
-static void change_personality(DICTIONARY *, unsigned int, MODEL **);
-static void delay(char *);
-static void die(int);
-static bool dissimilar(DICTIONARY *, DICTIONARY *);
+static bool dissimilar(HAL_DICTIONARY *, HAL_DICTIONARY *);
 static void error(char *, char *, ...);
-static float evaluate_reply(MODEL *, DICTIONARY *, DICTIONARY *);
-static COMMAND_WORDS execute_command(DICTIONARY *, int *);
-static TREE *find_symbol(TREE *, int);
-static TREE *find_symbol_add(TREE *, int);
-static uint16_t find_word(DICTIONARY *, STRING);
-static char *generate_reply(MODEL *, DICTIONARY *);
-static void help(void);
-static void ignore(int);
-static bool initialize_error(char *);
-static bool initialize_status(char *);
-static void learn(MODEL *, DICTIONARY *);
-static void make_greeting(DICTIONARY *);
-static void make_words(char *, DICTIONARY *);
-static DICTIONARY *new_dictionary(void);
+static float evaluate_reply(HAL_MODEL *, HAL_DICTIONARY *, HAL_DICTIONARY *);
+static HAL_TREE *find_symbol(HAL_TREE *, int);
+static HAL_TREE *find_symbol_add(HAL_TREE *, int);
+static uint16_t find_word(HAL_DICTIONARY *, HAL_STRING);
+static char *generate_reply(HAL_MODEL *, HAL_DICTIONARY *);
+static void learn(HAL_MODEL *, HAL_DICTIONARY *);
+static void make_greeting(HAL_DICTIONARY *);
+static void make_words(char *, HAL_DICTIONARY *);
+static HAL_DICTIONARY *new_dictionary(void);
 
-static void save_model(char *, MODEL *);
 static void upper(char *);
-static void write_input(char *);
-static void write_output(char *);
 
-
-static char *format_output(char *);
-static void free_dictionary(DICTIONARY *);
-static void free_model(MODEL *);
-static void free_tree(TREE *);
-static void free_word(STRING);
-static void free_words(DICTIONARY *);
-static void initialize_context(MODEL *);
-static void initialize_dictionary(DICTIONARY *);
-static DICTIONARY *initialize_list(char *);
-static SWAP *initialize_swap(char *);
-static void load_dictionary(FILE *, DICTIONARY *);
-static bool load_model(char *, MODEL *);
-static void load_personality(MODEL **);
-static void load_tree(FILE *, TREE *);
-static void load_word(FILE *, DICTIONARY *);
-static DICTIONARY *make_keywords(MODEL *, DICTIONARY *);
-static char *make_output(DICTIONARY *);
-static MODEL *new_model(int);
-static TREE *new_node(void);
+static void free_dictionary(HAL_DICTIONARY *);
+static void free_model(HAL_MODEL *);
+static void free_tree(HAL_TREE *);
+static void free_word(HAL_STRING);
+static void free_words(HAL_DICTIONARY *);
+static void initialize_context(HAL_MODEL *);
+static void initialize_dictionary(HAL_DICTIONARY *);
+static HAL_DICTIONARY *initialize_list(const char *);
+static SWAP *initialize_swap(const char *);
+static void load_dictionary(FILE *, HAL_DICTIONARY *);
+static bool load_model(const char *, HAL_MODEL *);
+static void load_personality(const char* brnpath, const char* trnpath, const char* banpath,
+        const char* auxpath, const char* grtpath, const char* swppath, HAL_MODEL** model);
+static void load_tree(FILE *, HAL_TREE *);
+static void load_word(FILE *, HAL_DICTIONARY *);
+static HAL_DICTIONARY *make_keywords(HAL_MODEL *, HAL_DICTIONARY *);
+static char *make_output(HAL_DICTIONARY *);
+static HAL_MODEL *new_model(int);
+static HAL_TREE *new_node(void);
 static SWAP *new_swap(void);
-static bool print_header(FILE *);
-static bool progress(char *, int, int);
-static DICTIONARY *reply(MODEL *, DICTIONARY *);
-static void save_dictionary(FILE *, DICTIONARY *);
-static void save_tree(FILE *, TREE *);
-static void save_word(FILE *, STRING);
-static int search_dictionary(DICTIONARY *, STRING, bool *);
-static int search_node(TREE *, int, bool *);
-static int seed(MODEL *, DICTIONARY *);
-static void show_dictionary(DICTIONARY *);
-static bool status(char *, ...);
-static void train(MODEL *, char *);
-static void typein(char);
-static void update_context(MODEL *, int);
-static void update_model(MODEL *, int);
+static HAL_DICTIONARY *reply(HAL_MODEL *, HAL_DICTIONARY *);
+static void save_dictionary(FILE *, HAL_DICTIONARY *);
+static void save_tree(FILE *, HAL_TREE *);
+static void save_word(FILE *, HAL_STRING);
+static int search_dictionary(HAL_DICTIONARY *, HAL_STRING, bool *);
+static int search_node(HAL_TREE *, int, bool *);
+static int seed(HAL_MODEL *, HAL_DICTIONARY *);
+static void show_dictionary(HAL_DICTIONARY *);
+static void train(HAL_MODEL *, const char *);
+static void update_context(HAL_MODEL *, int);
+static void update_model(HAL_MODEL *, int);
 static bool warn(char *, char *, ...);
-static int wordcmp(STRING, STRING);
-static bool word_exists(DICTIONARY *, STRING);
+static int wordcmp(HAL_STRING, HAL_STRING);
+static bool word_exists(HAL_DICTIONARY *, HAL_STRING);
 static int rnd(int);
 
 
-// Purpose: Set noprompt variable.
-void megahal_setnoprompt(void)
-{
-    noprompt = true;
-}
-
-void megahal_setnowrap (void)
-{
-    nowrap = true;
-}
-
-void megahal_setnobanner (void)
-{
-    nobanner = true;
-}
-
-void megahal_seterrorfile(char *filename)
-{
-    errorfilename = filename;
-}
-
-void megahal_setstatusfile(char *filename)
-{
-    statusfilename = filename;
-}
-
-void megahal_setdirectory (char *dir)
-{
-    directory = dir;
-}
-
 // Initialize various brains and files.
-void megahal_initialize(void)
+void megahal_initialize(const char* directory)
 {
-    errorfp = stderr;
-    statusfp = stdout;
-
-    initialize_error(errorfilename);
-    initialize_status(statusfilename);
-    ignore(0);
-
-#ifdef AMIGA
-    _AmigaLocale=OpenLocale(NULL);
-#endif
-#ifdef __mac_os
-    gSpeechExists = initialize_speech();
-#endif
-    if(!nobanner)
-	fprintf(stdout,
-		"+------------------------------------------------------------------------+\n"
-		"|                                                                        |\n"
-		"|  #    #  ######   ####     ##    #    #    ##    #                     |\n"
-		"|  ##  ##  #       #    #   #  #   #    #   #  #   #               ###   |\n"
-		"|  # ## #  #####   #       #    #  ######  #    #  #              #   #  |\n"
-		"|  #    #  #       #  ###  ######  #    #  ######  #       #   #   ###   |\n"
-		"|  #    #  #       #    #  #    #  #    #  #    #  #        # #   #   #  |\n"
-		"|  #    #  ######   ####   #    #  #    #  #    #  ######    #     ###r6 |\n"
-		"|                                                                        |\n"
-		"|                    Copyright(C) 1998 Jason Hutchens                    |\n"
-		"+------------------------------------------------------------------------+\n"
-		);
-
     words = new_dictionary();
     greets = new_dictionary();
-    change_personality(NULL, 0, &model);
+
+    string brnpath = string(directory) + "/megahal.brn";
+    string trnpath = string(directory) + "/megahal.trn";
+    string banpath = string(directory) + "/megahal.ban";
+    string auxpath = string(directory) + "/megahal.aux";
+    string grtpath = string(directory) + "/megahal.grt";
+    string swppath = string(directory) + "/megahal.swp";
+
+    load_personality(brnpath.c_str(), trnpath.c_str(), banpath.c_str(), auxpath.c_str(), grtpath.c_str(), swppath.c_str(), &model);
 }
 
 // Take string as input, and return allocated string as output.  The
 // user is responsible for freeing this memory.
-char *megahal_do_reply(char *input, int log)
+char *megahal_do_reply(char *input)
 {
     char *output = NULL;
-
-    if (log != 0)
-	write_input(input);  /* log input if so desired */
 
     upper(input);
 
@@ -287,11 +177,8 @@ char *megahal_do_reply(char *input, int log)
 }
 
 // Take string as input, update model but don't generate reply.
-void megahal_learn_no_reply(char *input, int log)
+void megahal_learn_no_reply(char *input)
 {
-    if (log != 0)
-	write_input(input);  /* log input if so desired */
-
     upper(input);
 
     make_words(input, words);
@@ -307,62 +194,8 @@ char *megahal_initial_greeting(void)
 
     make_greeting(greets);
     output = generate_reply(model, greets);
+    capitalize(output);
     return output;
-}
-
-// This function pretty prints output.
-// Wrapper function to have things in the right namespace.
-void megahal_output(char *output)
-{
-    if(!quiet)
-	write_output(output);
-}
-
-// Check to see if input is a megahal command, and if so, act upon it.
-// Returns 1 if it is a command, 0 if it is not.
-int megahal_command(char *input)
-{
-    int position = 0;
-    char *output;
-
-    make_words(input,words);
-    switch(execute_command(words, &position)) {
-    case EXIT:
-	exit(0);
-	break;
-    case QUIT:
-	save_model("megahal.brn", model);
-    exit(0);
-	break;
-    case SAVE:
-	save_model("megahal.brn", model);
-	break;
-    case DELAY:
-	typing_delay=!typing_delay;
-	printf("MegaHAL typing is now %s.\n", typing_delay?"on":"off");
-	return 1;
-    case HELP:
-	help();
-	return 1;
-    case BRAIN:
-	change_personality(words, position, &model);
-	make_greeting(greets);
-	output=generate_reply(model, greets);
-	write_output(output);
-	return 1;
-    case QUIET:
-	quiet=!quiet;
-	return 1;
-    default:
-	return 0;
-    }
-    return 0;
-}
-
-// Clean up everything. Prepare for exit.
-void megahal_cleanup(void)
-{
-    save_model("megahal.brn", model);
 }
 
 
@@ -370,113 +203,31 @@ void megahal_cleanup(void)
 // Private functions
 //
 
-// Detect whether the user has typed a command, and execute the corresponding function.
-COMMAND_WORDS execute_command(DICTIONARY *words, int *position)
-{
-    register unsigned int i;
-    register unsigned int j;
-
-    /*
-     *		If there is only one word, then it can't be a command.
-     */
-    *position=words->size+1;
-    if(words->size<=1) return(UNKNOWN);
-
-    /*
-     *		Search through the word array.  If a command prefix is found,
-     *		then try to match the following word with a command word.  If
-     *		a match is found, then return a command identifier.  If the
-     *		Following word is a number, then change the judge.  Otherwise,
-     *		continue the search.
-     */
-    for(i=0; i<words->size-1; ++i)
-	/*
-	 *		The command prefix was found.
-	 */
-	if(words->entry[i].word[words->entry[i].length - 1] == '#') {
-	    /*
-	     *		Look for a command word.
-	     */
-	    for(j = 0; j < COMMAND_SIZE; ++j)
-		if(wordcmp(command[j].word, words->entry[i + 1]) == 0) {
-		    *position = i + 1;
-		    return(command[j].command);
-		}
-	}
-
-    return(UNKNOWN);
-}
-
-// Close the current error file pointer, and open a new one.
-bool initialize_error(char *filename)
-{
-    if(errorfp!=stderr) fclose(errorfp);
-
-    if(filename==NULL) return(true);
-
-    errorfp = fopen(filename, "a");
-    if(errorfp==NULL) {
-	errorfp=stderr;
-	return(false);
-    }
-    return(print_header(errorfp));
-}
-
 // Print the specified message to the error file.
 void error(char *title, char *fmt, ...)
 {
-    va_list argp;
+    va_list argptr;
+    static char string[1024];
 
-    fprintf(errorfp, "%s: ", title);
-    va_start(argp, fmt);
-    vfprintf(errorfp, fmt, argp);
-    va_end(argp);
-    fprintf(errorfp, ".\n");
-    fflush(errorfp);
+    va_start(argptr, fmt);
+    vsprintf(string, fmt, argptr);
+    va_end(argptr);
 
-    fprintf(stderr, "MegaHAL died for some reason; check the error log.\n");
+    fprintf(stderr, "MegaHAL died. %s: %s \n", title, string);
 
     exit(1);
 }
 
 bool warn(char *title, char *fmt, ...)
 {
-    va_list argp;
+    va_list argptr;
+    static char string[1024];
 
-    fprintf(errorfp, "%s: ", title);
-    va_start(argp, fmt);
-    vfprintf(errorfp, fmt, argp);
-    va_end(argp);
-    fprintf(errorfp, ".\n");
-    fflush(errorfp);
+    va_start(argptr, fmt);
+    vsprintf(string, fmt, argptr);
+    va_end(argptr);
 
-    fprintf(stderr, "MegaHAL emitted a warning; check the error log.\n");
-
-    return(true);
-}
-
-// Close the current status file pointer, and open a new one.
-bool initialize_status(char *filename)
-{
-    if(statusfp!=stdout) fclose(statusfp);
-    if(filename==NULL) return(false);
-    statusfp=fopen(filename, "a");
-    if(statusfp==NULL) {
-	statusfp=stdout;
-	return(false);
-    }
-    return(print_header(statusfp));
-}
-
-// Print the specified message to the status file.
-bool status(char *fmt, ...)
-{
-    va_list argp;
-
-    va_start(argp, fmt);
-    vfprintf(statusfp, fmt, argp);
-    va_end(argp);
-    fflush(statusfp);
+    fprintf(stderr, "MegaHAL emitted a warning. %s: %s\n", title, string);
 
     return(true);
 }
@@ -498,28 +249,6 @@ bool print_header(FILE *file)
     fflush(file);
 
     return(true);
-}
-
-// Display the output string.
-void write_output(char *output)
-{
-    char *formatted;
-    char *bit;
-
-    capitalize(output);
-
-    width=75;
-    formatted=format_output(output);
-    delay(formatted);
-    width=64;
-    formatted=format_output(output);
-
-    bit=strtok(formatted, "\n");
-    if(bit==NULL) (void)status("MegaHAL: %s\n", formatted);
-    while(bit!=NULL) {
-	(void)status("MegaHAL: %s\n", bit);
-	bit=strtok(NULL, "\n");
-    }
 }
 
 // Convert a string to look nice.
@@ -547,71 +276,9 @@ void upper(char *string)
     for(i=0; i<strlen(string); ++i) string[i]=(char)toupper((int)string[i]);
 }
 
-// Log the user's input
-void write_input(char *input)
-{
-    char *formatted;
-    char *bit;
-
-    width=64;
-    formatted=format_output(input);
-
-    bit=strtok(formatted, "\n");
-    if(bit==NULL) (void)status("User:    %s\n", formatted);
-    while(bit!=NULL) {
-	(void)status("User:    %s\n", bit);
-	bit=strtok(NULL, "\n");
-    }
-}
-
-// Format a string to display nicely on a terminal of a given width.
-static char *format_output(char *output)
-{
-    static char *formatted=NULL;
-    register unsigned int i,j,c;
-    int l;
-    if(formatted==NULL) {
-	formatted=(char *)malloc(sizeof(char));
-	if(formatted==NULL) {
-	    error("format_output", "Unable to allocate formatted");
-	    return("ERROR");
-	}
-    }
-
-    formatted=(char *)realloc((char *)formatted, sizeof(char)*(strlen(output)+2));
-    if(formatted==NULL) {
-	error("format_output", "Unable to re-allocate formatted");
-	return("ERROR");
-    }
-
-    l=0;
-    j=0;
-    for(i=0; i<strlen(output); ++i) {
-	if((l==0)&&(isspace((unsigned char)output[i]))) continue;
-	formatted[j]=output[i];
-	++j;
-	++l;
-	if(!nowrap)
-	    if(l>=width)
-		for(c=j-1; c>0; --c)
-		    if(formatted[c]==' ') {
-			formatted[c]='\n';
-			l=j-c-1;
-			break;
-		    }
-    }
-    if((j>0)&&(formatted[j-1]!='\n')) {
-	formatted[j]='\n';
-	++j;
-    }
-    formatted[j]='\0';
-
-    return(formatted);
-}
-
 // Add a word to a dictionary, and return the identifierassigned to the word.If the word already
 // exists in the dictionary, then return its current identifier without adding it again.
-uint16_t add_word(DICTIONARY *dictionary, STRING word)
+uint16_t add_word(HAL_DICTIONARY *dictionary, HAL_STRING word)
 {
     register int i;
     int position;
@@ -647,10 +314,10 @@ uint16_t add_word(DICTIONARY *dictionary, STRING word)
      *		Allocate one more entry for the word array
      */
     if(dictionary->entry==NULL) {
-	dictionary->entry=(STRING *)malloc(sizeof(STRING)*(dictionary->size));
+	dictionary->entry=(HAL_STRING *)malloc(sizeof(HAL_STRING)*(dictionary->size));
     } else {
-	dictionary->entry=(STRING *)realloc((STRING *)(dictionary->entry),
-					    sizeof(STRING)*(dictionary->size));
+	dictionary->entry=(HAL_STRING *)realloc((HAL_STRING *)(dictionary->entry),
+					    sizeof(HAL_STRING)*(dictionary->size));
     }
     if(dictionary->entry==NULL) {
 	error("add_word", "Unable to reallocate the dictionary to %d elements.", dictionary->size);
@@ -690,7 +357,7 @@ fail:
 
 // Search the dictionary for the specified word, returning its position in the index if found, 
 // or the position where it should be inserted otherwise.
-int search_dictionary(DICTIONARY *dictionary, STRING word, bool *find)
+int search_dictionary(HAL_DICTIONARY *dictionary, HAL_STRING word, bool *find)
 {
     int position;
     int min;
@@ -755,7 +422,7 @@ notfound:
 
 // Return the symbol corresponding to the word specified. We assume that the word with index zero
 // is equal to a NULL word, indicating an error condition.
-uint16_t find_word(DICTIONARY *dictionary, STRING word)
+uint16_t find_word(HAL_DICTIONARY *dictionary, HAL_STRING word)
 {
     int position;
     bool found;
@@ -768,7 +435,7 @@ uint16_t find_word(DICTIONARY *dictionary, STRING word)
 
 // Compare two words, and return an integer indicating whether the first word is less than,
 // equal to or greater than the second word
-int wordcmp(STRING word1, STRING word2)
+int wordcmp(HAL_STRING word1, HAL_STRING word2)
 {
     register int i;
     int bound;
@@ -786,7 +453,7 @@ int wordcmp(STRING word1, STRING word2)
 }
 
 // Release the memory consumed by the dictionary.
-void free_dictionary(DICTIONARY *dictionary)
+void free_dictionary(HAL_DICTIONARY *dictionary)
 {
     if(dictionary==NULL) return;
     if(dictionary->entry!=NULL) {
@@ -800,7 +467,7 @@ void free_dictionary(DICTIONARY *dictionary)
     dictionary->size=0;
 }
 
-void free_model(MODEL *model)
+void free_model(HAL_MODEL *model)
 {
     if(model==NULL) return;
     if(model->forward!=NULL) {
@@ -819,43 +486,37 @@ void free_model(MODEL *model)
     free(model);
 }
 
-void free_tree(TREE *tree)
+void free_tree(HAL_TREE *tree)
 {
-    static int level=0;
     register unsigned int i;
 
     if(tree==NULL) return;
 
     if(tree->tree!=NULL) {
-	if(level==0) progress("Freeing tree", 0, 1);
 	for(i=0; i<tree->branch; ++i) {
-	    ++level;
 	    free_tree(tree->tree[i]);
-	    --level;
-	    if(level==0) progress(NULL, i, tree->branch);
 	}
-	if(level==0) progress(NULL, 1, 1);
 	free(tree->tree);
     }
     free(tree);
 }
 
 // Add dummy words to the dictionary.
-void initialize_dictionary(DICTIONARY *dictionary)
+void initialize_dictionary(HAL_DICTIONARY *dictionary)
 {
-    STRING word={ 7, "<ERROR>" };
-    STRING end={ 5, "<FIN>" };
+    HAL_STRING word={ 7, "<ERROR>" };
+    HAL_STRING end={ 5, "<FIN>" };
 
     (void)add_word(dictionary, word);
     (void)add_word(dictionary, end);
 }
 
 // Allocate room for a new dictionary.
-DICTIONARY *new_dictionary(void)
+HAL_DICTIONARY *new_dictionary(void)
 {
-    DICTIONARY *dictionary=NULL;
+    HAL_DICTIONARY *dictionary=NULL;
 
-    dictionary=(DICTIONARY *)malloc(sizeof(DICTIONARY));
+    dictionary=(HAL_DICTIONARY *)malloc(sizeof(HAL_DICTIONARY));
     if(dictionary==NULL) {
 	error("new_dictionary", "Unable to allocate dictionary.");
 	return(NULL);
@@ -869,36 +530,32 @@ DICTIONARY *new_dictionary(void)
 }
 
 // Save a dictionary to the specified file.
-void save_dictionary(FILE *file, DICTIONARY *dictionary)
+void save_dictionary(FILE *file, HAL_DICTIONARY *dictionary)
 {
     register unsigned int i;
 
     fwrite(&(dictionary->size), sizeof(uint32_t), 1, file);
-    progress("Saving dictionary", 0, 1);
+    printf("Saving dictionary\n");
     for(i=0; i<dictionary->size; ++i) {
 	save_word(file, dictionary->entry[i]);
-	progress(NULL, i, dictionary->size);
     }
-    progress(NULL, 1, 1);
 }
 
 // Load a dictionary from the specified file.
-void load_dictionary(FILE *file, DICTIONARY *dictionary)
+void load_dictionary(FILE *file, HAL_DICTIONARY *dictionary)
 {
     register int i;
     int size;
 
     fread(&size, sizeof(uint32_t), 1, file);
-    progress("Loading dictionary", 0, 1);
+    printf("Loading dictionary\n", 0, 1);
     for(i=0; i<size; ++i) {
 	load_word(file, dictionary);
-	progress(NULL, i, size);
     }
-    progress(NULL, 1, 1);
 }
 
 // Save a dictionary word to a file.
-void save_word(FILE *file, STRING word)
+void save_word(FILE *file, HAL_STRING word)
 {
     register unsigned int i;
 
@@ -908,10 +565,10 @@ void save_word(FILE *file, STRING word)
 }
 
 // Load a dictionary word from a file.
-void load_word(FILE *file, DICTIONARY *dictionary)
+void load_word(FILE *file, HAL_DICTIONARY *dictionary)
 {
     register unsigned int i;
-    STRING word;
+    HAL_STRING word;
 
     fread(&(word.length), sizeof(uint8_t), 1, file);
     word.word=(char *)malloc(sizeof(char)*word.length);
@@ -926,14 +583,14 @@ void load_word(FILE *file, DICTIONARY *dictionary)
 }
 
 // Allocate a new node for the n-gram tree, and initialise its contents to sensible values.
-TREE *new_node(void)
+HAL_TREE *new_node(void)
 {
-    TREE *node=NULL;
+    HAL_TREE *node=NULL;
 
     /*
      *		Allocate memory for the new node
      */
-    node=(TREE *)malloc(sizeof(TREE));
+    node=(HAL_TREE *)malloc(sizeof(HAL_TREE));
     if(node==NULL) {
 	error("new_node", "Unable to allocate the node.");
 	goto fail;
@@ -956,11 +613,11 @@ fail:
 }
 
 // Create and initialise a new ngram model.
-MODEL *new_model(int order)
+HAL_MODEL *new_model(int order)
 {
-    MODEL *model=NULL;
+    HAL_MODEL *model=NULL;
 
-    model=(MODEL *)malloc(sizeof(MODEL));
+    model=(HAL_MODEL *)malloc(sizeof(HAL_MODEL));
     if(model==NULL) {
 	error("new_model", "Unable to allocate model.");
 	goto fail;
@@ -969,7 +626,7 @@ MODEL *new_model(int order)
     model->order=order;
     model->forward=new_node();
     model->backward=new_node();
-    model->context=(TREE **)malloc(sizeof(TREE *)*(order+2));
+    model->context=(HAL_TREE **)malloc(sizeof(HAL_TREE *)*(order+2));
     if(model->context==NULL) {
 	error("new_model", "Unable to allocate context array.");
 	goto fail;
@@ -985,7 +642,7 @@ fail:
 }
 
 // Update the model with the specified symbol.
-void update_model(MODEL *model, int symbol)
+void update_model(HAL_MODEL *model, int symbol)
 {
     register unsigned int i;
 
@@ -1001,7 +658,7 @@ void update_model(MODEL *model, int symbol)
 }
 
 // Update the context of the model without adding the symbol.
-void update_context(MODEL *model, int symbol)
+void update_context(HAL_MODEL *model, int symbol)
 {
     register unsigned int i;
 
@@ -1012,9 +669,9 @@ void update_context(MODEL *model, int symbol)
 
 // Update the statistics of the specified tree with the specified symbol, which may mean
 // growing the tree if the symbol hasn't been seen in this context before.
-TREE *add_symbol(TREE *tree, uint16_t symbol)
+HAL_TREE *add_symbol(HAL_TREE *tree, uint16_t symbol)
 {
-    TREE *node=NULL;
+    HAL_TREE *node=NULL;
 
     /*
      *		Search for the symbol in the subtree of the tree node.
@@ -1033,10 +690,10 @@ TREE *add_symbol(TREE *tree, uint16_t symbol)
 }
 
 // Return a pointer to the child node, if one exists, which contains the specified symbol.
-TREE *find_symbol(TREE *node, int symbol)
+HAL_TREE *find_symbol(HAL_TREE *node, int symbol)
 {
     register unsigned int i;
-    TREE *found=NULL;
+    HAL_TREE *found=NULL;
     bool found_symbol=false;
 
     /*
@@ -1050,10 +707,10 @@ TREE *find_symbol(TREE *node, int symbol)
 
 // This function is conceptually similar to find_symbol, apart from the fact that if th
 // symbol is not found, a new node is automatically allocatedand added to the tree.
-TREE *find_symbol_add(TREE *node, int symbol)
+HAL_TREE *find_symbol_add(HAL_TREE *node, int symbol)
 {
     register unsigned int i;
-    TREE *found=NULL;
+    HAL_TREE *found=NULL;
     bool found_symbol=false;
 
     /*
@@ -1073,7 +730,7 @@ TREE *find_symbol_add(TREE *node, int symbol)
 }
 
 // Attach a new child node to the sub-tree of the tree specified.
-void add_node(TREE *tree, TREE *node, int position)
+void add_node(HAL_TREE *tree, HAL_TREE *node, int position)
 {
     register int i;
 
@@ -1082,9 +739,9 @@ void add_node(TREE *tree, TREE *node, int position)
      *		the sub-tree from scratch.
      */
     if(tree->tree==NULL) {
-	tree->tree=(TREE **)malloc(sizeof(TREE *)*(tree->branch+1));
+	tree->tree=(HAL_TREE **)malloc(sizeof(HAL_TREE *)*(tree->branch+1));
     } else {
-	tree->tree=(TREE **)realloc((TREE **)(tree->tree),sizeof(TREE *)*
+	tree->tree=(HAL_TREE **)realloc((HAL_TREE **)(tree->tree),sizeof(HAL_TREE *)*
 				    (tree->branch+1));
     }
     if(tree->tree==NULL) {
@@ -1109,7 +766,7 @@ void add_node(TREE *tree, TREE *node, int position)
 // Perform a binary search for the specified symbol on the subtree of the given node.
 // Return the position of the child node in the subtree if the symbol was found, or the
 // position where it should be inserted to keep the subtree sorted if it wasn't.
-int search_node(TREE *node, int symbol, bool *found_symbol)
+int search_node(HAL_TREE *node, int symbol, bool *found_symbol)
 {
     register unsigned int position;
     int min;
@@ -1161,7 +818,7 @@ notfound:
 }
 
 // Set the context of the model to a default value.
-void initialize_context(MODEL *model)
+void initialize_context(HAL_MODEL *model)
 {
     register unsigned int i;
 
@@ -1169,7 +826,7 @@ void initialize_context(MODEL *model)
 }
 
 // Learn from the user's input.
-void learn(MODEL *model, DICTIONARY *words)
+void learn(HAL_MODEL *model, HAL_DICTIONARY *words)
 {
     register unsigned int i;
     register int j;
@@ -1222,11 +879,11 @@ void learn(MODEL *model, DICTIONARY *words)
 }
 
 // Infer a MegaHAL brain from the contents of a text file.
-void train(MODEL *model, char *filename)
+void train(HAL_MODEL *model, const char *filename)
 {
     FILE *file;
     char buffer[1024];
-    DICTIONARY *words=NULL;
+    HAL_DICTIONARY *words=NULL;
     int length;
 
     if(filename==NULL) return;
@@ -1243,7 +900,7 @@ void train(MODEL *model, char *filename)
 
     words=new_dictionary();
 
-    progress("Training from file", 0, 1);
+    printf("Training from file\n", 0, 1);
     while(!feof(file)) {
 
 	if(fgets(buffer, 1024, file)==NULL) break;
@@ -1254,18 +911,14 @@ void train(MODEL *model, char *filename)
 	upper(buffer);
 	make_words(buffer, words);
 	learn(model, words);
-
-	progress(NULL, ftell(file), length);
-
     }
-    progress(NULL, 1, 1);
 
     free_dictionary(words);
     fclose(file);
 }
 
 // Display the dictionary for training purposes.
-void show_dictionary(DICTIONARY *dictionary)
+void show_dictionary(HAL_DICTIONARY *dictionary)
 {
     register unsigned int i;
     register unsigned int j;
@@ -1287,28 +940,14 @@ void show_dictionary(DICTIONARY *dictionary)
 }
 
 // Save the current state to a MegaHAL brain file.
-void save_model(char *modelname, MODEL *model)
+void megahal_save_model(char *modelpath)
 {
     FILE *file;
-    static char *filename=NULL;
 
-    if(filename==NULL) filename=(char *)malloc(sizeof(char)*1);
-
-    /*
-     *    Allocate memory for the filename
-     */
-    filename=(char *)realloc(filename,
-			     sizeof(char)*(strlen(directory)+strlen(SEP)+12));
-    if(filename==NULL) error("save_model","Unable to allocate filename");
-
-    show_dictionary(model->dictionary);
-    if(filename==NULL) return;
-
-    sprintf(filename, "%s%smegahal.brn", directory, SEP);
-    file=fopen(filename, "wb");
+    file=fopen(modelpath, "wb");
     if(file==NULL) {
-	warn("save_model", "Unable to open file `%s'", filename);
-	return;
+	    warn("save_model", "Unable to open file '%s'", modelpath);
+	    return;
     }
 
     fwrite(COOKIE, sizeof(char), strlen(COOKIE), file);
@@ -1321,7 +960,7 @@ void save_model(char *modelname, MODEL *model)
 }
 
 // Save a tree structure to the specified file.
-void save_tree(FILE *file, TREE *node)
+void save_tree(FILE *file, HAL_TREE *node)
 {
     static int level=0;
     register unsigned int i;
@@ -1331,20 +970,16 @@ void save_tree(FILE *file, TREE *node)
     fwrite(&(node->count), sizeof(uint16_t), 1, file);
     fwrite(&(node->branch), sizeof(uint16_t), 1, file);
 
-    if(level==0) progress("Saving tree", 0, 1);
     for(i=0; i<node->branch; ++i) {
 	++level;
 	save_tree(file, node->tree[i]);
 	--level;
-	if(level==0) progress(NULL, i, node->branch);
     }
-    if(level==0) progress(NULL, 1, 1);
 }
 
 // Load a tree structure from the specified file.
-void load_tree(FILE *file, TREE *node)
+void load_tree(FILE *file, HAL_TREE *node)
 {
-    static int level=0;
     register unsigned int i;
 
     fread(&(node->symbol), sizeof(uint16_t), 1, file);
@@ -1354,25 +989,20 @@ void load_tree(FILE *file, TREE *node)
 
     if(node->branch==0) return;
 
-    node->tree=(TREE **)malloc(sizeof(TREE *)*(node->branch));
+    node->tree=(HAL_TREE **)malloc(sizeof(HAL_TREE *)*(node->branch));
     if(node->tree==NULL) {
 	error("load_tree", "Unable to allocate subtree");
 	return;
     }
 
-    if(level==0) progress("Loading tree", 0, 1);
     for(i=0; i<node->branch; ++i) {
 	node->tree[i]=new_node();
-	++level;
 	load_tree(file, node->tree[i]);
-	--level;
-	if(level==0) progress(NULL, i, node->branch);
     }
-    if(level==0) progress(NULL, 1, 1);
 }
 
 // Load a model into memory.
-bool load_model(char *filename, MODEL *model)
+bool load_model(const char *filename, HAL_MODEL *model)
 {
     FILE *file;
     char cookie[16];
@@ -1407,7 +1037,7 @@ fail:
 }
 
 // Break a string into an array of words.
-void make_words(char *input, DICTIONARY *words)
+void make_words(char *input, HAL_DICTIONARY *words)
 {
     int offset=0;
 
@@ -1436,9 +1066,9 @@ void make_words(char *input, DICTIONARY *words)
 	     *		Add the word to the dictionary
 	     */
 	    if(words->entry==NULL)
-		words->entry=(STRING *)malloc((words->size+1)*sizeof(STRING));
+		words->entry=(HAL_STRING *)malloc((words->size+1)*sizeof(HAL_STRING));
 	    else
-		words->entry=(STRING *)realloc(words->entry, (words->size+1)*sizeof(STRING));
+		words->entry=(HAL_STRING *)realloc(words->entry, (words->size+1)*sizeof(HAL_STRING));
 
 	    if(words->entry==NULL) {
 		error("make_words", "Unable to reallocate dictionary");
@@ -1463,9 +1093,9 @@ void make_words(char *input, DICTIONARY *words)
      */
     if(isalnum((unsigned char)words->entry[words->size-1].word[0])) {
 	if(words->entry==NULL)
-	    words->entry=(STRING *)malloc((words->size+1)*sizeof(STRING));
+	    words->entry=(HAL_STRING *)malloc((words->size+1)*sizeof(HAL_STRING));
 	else
-	    words->entry=(STRING *)realloc(words->entry, (words->size+1)*sizeof(STRING));
+	    words->entry=(HAL_STRING *)realloc(words->entry, (words->size+1)*sizeof(HAL_STRING));
 	if(words->entry==NULL) {
 	    error("make_words", "Unable to reallocate dictionary");
 	    return;
@@ -1526,7 +1156,7 @@ bool boundary(char *string, int position)
 }
 
 // Put some special words into the dictionary so that the program will respond as if to a new judge.
-void make_greeting(DICTIONARY *words)
+void make_greeting(HAL_DICTIONARY *words)
 {
     register unsigned int i;
 
@@ -1537,11 +1167,11 @@ void make_greeting(DICTIONARY *words)
 
 // Take a string of user input and return a string of output which may vaguely be construed
 // as containing a reply to whatever is in the input string.
-char *generate_reply(MODEL *model, DICTIONARY *words)
+char *generate_reply(HAL_MODEL *model, HAL_DICTIONARY *words)
 {
-    static DICTIONARY *dummy=NULL;
-    DICTIONARY *replywords;
-    DICTIONARY *keywords;
+    static HAL_DICTIONARY *dummy=NULL;
+    HAL_DICTIONARY *replywords;
+    HAL_DICTIONARY *keywords;
     float surprise;
     float max_surprise;
     char *output;
@@ -1586,7 +1216,6 @@ char *generate_reply(MODEL *model, DICTIONARY *words)
 	}
 /*  	progress(NULL, (time(NULL)-basetime),timeout); */
     } while((time(NULL)-basetime)<timeout);
-    progress(NULL, 1, 1);
 
     /*
      *		Return the best answer we generated
@@ -1595,7 +1224,7 @@ char *generate_reply(MODEL *model, DICTIONARY *words)
 }
 
 // Return true or false depending on whether the dictionaries are the same or not.
-bool dissimilar(DICTIONARY *words1, DICTIONARY *words2)
+bool dissimilar(HAL_DICTIONARY *words1, HAL_DICTIONARY *words2)
 {
     register unsigned int i;
 
@@ -1607,9 +1236,9 @@ bool dissimilar(DICTIONARY *words1, DICTIONARY *words2)
 
 // Put all the interesting words from the user's input into a keywords dictionary,
 // which will be used when generating a reply.
-DICTIONARY *make_keywords(MODEL *model, DICTIONARY *words)
+HAL_DICTIONARY *make_keywords(HAL_MODEL *model, HAL_DICTIONARY *words)
 {
-    static DICTIONARY *keys=NULL;
+    static HAL_DICTIONARY *keys=NULL;
     register unsigned int i;
     register unsigned int j;
     int c;
@@ -1649,7 +1278,7 @@ DICTIONARY *make_keywords(MODEL *model, DICTIONARY *words)
 }
 
 // Add a word to the keyword dictionary.
-void add_key(MODEL *model, DICTIONARY *keys, STRING word)
+void add_key(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_STRING word)
 {
     int symbol;
 
@@ -1665,7 +1294,7 @@ void add_key(MODEL *model, DICTIONARY *keys, STRING word)
 }
 
 // Add an auxilliary keyword to the keyword dictionary.
-void add_aux(MODEL *model, DICTIONARY *keys, STRING word)
+void add_aux(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_STRING word)
 {
     int symbol;
 
@@ -1679,9 +1308,9 @@ void add_aux(MODEL *model, DICTIONARY *keys, STRING word)
 }
 
 // Generate a dictionary of reply words appropriate to the given dictionary of keywords.
-DICTIONARY *reply(MODEL *model, DICTIONARY *keys)
+HAL_DICTIONARY *reply(HAL_MODEL *model, HAL_DICTIONARY *keys)
 {
-    static DICTIONARY *replies=NULL;
+    static HAL_DICTIONARY *replies=NULL;
     register int i;
     int symbol;
     bool start=true;
@@ -1712,9 +1341,9 @@ DICTIONARY *reply(MODEL *model, DICTIONARY *keys)
 	 *		Append the symbol to the reply dictionary.
 	 */
 	if(replies->entry==NULL)
-	    replies->entry=(STRING *)malloc((replies->size+1)*sizeof(STRING));
+	    replies->entry=(HAL_STRING *)malloc((replies->size+1)*sizeof(HAL_STRING));
 	else
-	    replies->entry=(STRING *)realloc(replies->entry, (replies->size+1)*sizeof(STRING));
+	    replies->entry=(HAL_STRING *)realloc(replies->entry, (replies->size+1)*sizeof(HAL_STRING));
 	if(replies->entry==NULL) {
 	    error("reply", "Unable to reallocate dictionary");
 	    return(NULL);
@@ -1762,9 +1391,9 @@ DICTIONARY *reply(MODEL *model, DICTIONARY *keys)
 	 *		Prepend the symbol to the reply dictionary.
 	 */
 	if(replies->entry==NULL)
-	    replies->entry=(STRING *)malloc((replies->size+1)*sizeof(STRING));
+	    replies->entry=(HAL_STRING *)malloc((replies->size+1)*sizeof(HAL_STRING));
 	else
-	    replies->entry=(STRING *)realloc(replies->entry, (replies->size+1)*sizeof(STRING));
+	    replies->entry=(HAL_STRING *)realloc(replies->entry, (replies->size+1)*sizeof(HAL_STRING));
 	if(replies->entry==NULL) {
 	    error("reply", "Unable to reallocate dictionary");
 	    return(NULL);
@@ -1792,7 +1421,7 @@ DICTIONARY *reply(MODEL *model, DICTIONARY *keys)
 }
 
 // Measure the average surprise of keywords relative to the language model.
-float evaluate_reply(MODEL *model, DICTIONARY *keys, DICTIONARY *words)
+float evaluate_reply(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_DICTIONARY *words)
 {
     register unsigned int i;
     register int j;
@@ -1801,7 +1430,7 @@ float evaluate_reply(MODEL *model, DICTIONARY *keys, DICTIONARY *words)
     float probability;
     int count;
     float entropy=(float)0.0;
-    TREE *node;
+    HAL_TREE *node;
     int num=0;
 
     if(words->size<=0) return((float)0.0);
@@ -1860,7 +1489,7 @@ float evaluate_reply(MODEL *model, DICTIONARY *keys, DICTIONARY *words)
 }
 
 // Generate a string from the dictionary of reply words.
-char *make_output(DICTIONARY *words)
+char *make_output(HAL_DICTIONARY *words)
 {
     static char *output=NULL;
     register unsigned int i;
@@ -1908,9 +1537,9 @@ char *make_output(DICTIONARY *words)
 // Return a random symbol from the current context, or a zero symbol identifier if we've 
 // reached either the start or end of the sentence.Select the symbol based on probabilities,
 // favouring keywords. In all cases, use the longest available context to choose the symbol.
-int babble(MODEL *model, DICTIONARY *keys, DICTIONARY *words)
+int babble(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_DICTIONARY *words)
 {
-    TREE *node;
+    HAL_TREE *node;
     register int i;
     int count;
     int symbol = 0;
@@ -1955,7 +1584,7 @@ int babble(MODEL *model, DICTIONARY *keys, DICTIONARY *words)
 }
 
 // A silly brute-force searcher for the reply string.
-bool word_exists(DICTIONARY *dictionary, STRING word)
+bool word_exists(HAL_DICTIONARY *dictionary, HAL_STRING word)
 {
     register unsigned int i;
 
@@ -1966,7 +1595,7 @@ bool word_exists(DICTIONARY *dictionary, STRING word)
 }
 
 // Seed the reply by guaranteeing that it contains a keyword, if one exists.
-int seed(MODEL *model, DICTIONARY *keys)
+int seed(HAL_MODEL *model, HAL_DICTIONARY *keys)
 {
     register unsigned int i;
     int symbol;
@@ -2021,7 +1650,7 @@ void add_swap(SWAP *list, char *s, char *d)
     list->size+=1;
 
     if(list->from==NULL) {
-	list->from=(STRING *)malloc(sizeof(STRING));
+	list->from=(HAL_STRING *)malloc(sizeof(HAL_STRING));
 	if(list->from==NULL) {
 	    error("add_swap", "Unable to allocate list->from");
 	    return;
@@ -2029,20 +1658,20 @@ void add_swap(SWAP *list, char *s, char *d)
     }
 
     if(list->to==NULL) {
-	list->to=(STRING *)malloc(sizeof(STRING));
+	list->to=(HAL_STRING *)malloc(sizeof(HAL_STRING));
 	if(list->to==NULL) {
 	    error("add_swap", "Unable to allocate list->to");
 	    return;
 	}
     }
 
-    list->from=(STRING *)realloc(list->from, sizeof(STRING)*(list->size));
+    list->from=(HAL_STRING *)realloc(list->from, sizeof(HAL_STRING)*(list->size));
     if(list->from==NULL) {
 	error("add_swap", "Unable to reallocate from");
 	return;
     }
 
-    list->to=(STRING *)realloc(list->to, sizeof(STRING)*(list->size));
+    list->to=(HAL_STRING *)realloc(list->to, sizeof(HAL_STRING)*(list->size));
     if(list->to==NULL) {
 	error("add_swap", "Unable to reallocate to");
 	return;
@@ -2055,7 +1684,7 @@ void add_swap(SWAP *list, char *s, char *d)
 }
 
 // Read a swap structure from a file.
-SWAP *initialize_swap(char *filename)
+SWAP *initialize_swap(const char *filename)
 {
     SWAP *list;
     FILE *file=NULL;
@@ -2100,11 +1729,11 @@ void free_swap(SWAP *swap)
 }
 
 // Read a dictionary from a file.
-DICTIONARY *initialize_list(char *filename)
+HAL_DICTIONARY *initialize_list(const char *filename)
 {
-    DICTIONARY *list;
+    HAL_DICTIONARY *list;
     FILE *file=NULL;
-    STRING word;
+    HAL_STRING word;
     char *string;
     char buffer[1024];
 
@@ -2132,65 +1761,6 @@ DICTIONARY *initialize_list(char *filename)
     return(list);
 }
 
-// Display the string to stdout as if it was typed by a human.
-void delay(char *string)
-{
-    register int i;
-
-    /*
-     *		Don't simulate typing if the feature is turned off
-     */
-    if(typing_delay==false)	{
-	fprintf(stdout, string);
-	return;
-    }
-
-    /*
-     *		Display the entire string, one character at a time
-     */
-    for(i=0; i<(int)strlen(string)-1; ++i) typein(string[i]);
-    std::this_thread::sleep_for(std::chrono::microseconds((D_THINK + rnd(V_THINK) - rnd(V_THINK)) / 2));
-    typein(string[i]);
-}
-
-// Display a character to stdout as if it was typed by a human.
-void typein(char c)
-{
-    /*
-     *		Standard keyboard delay
-     */
-    std::this_thread::sleep_for(std::chrono::microseconds(D_KEY+rnd(V_KEY)-rnd(V_KEY)));
-    fprintf(stdout, "%c", c);
-    fflush(stdout);
-
-    /*
-     *		A random thinking delay
-     */
-    if((!isalnum((unsigned char)c))&&((rnd(100))<P_THINK))
-        std::this_thread::sleep_for(std::chrono::microseconds(D_THINK+rnd(V_THINK)-rnd(V_THINK)));
-}
-
-// Log the occurrence of a signal, but ignore it.
-void ignore(int sig)
-{
-    if(sig!=0) warn("ignore", "MegaHAL received signal %d", sig);
-
-#if !defined(DOS)
-    //    signal(SIGINT, saveandexit);
-    //    signal(SIGILL, die);
-    //    signal(SIGSEGV, die);
-#endif
-    //    signal(SIGFPE, die);
-}
-
-
-// Log the occurrence of a signal, and exit.
-void die(int sig)
-{
-    error("die", "MegaHAL received signal %d", sig);
-    exit(0);
-}
-
 // Return a random integer between 0 and range-1.
 int rnd(int range)
 {
@@ -2215,94 +1785,16 @@ int rnd(int range)
 */
 }
 
-// Display a progress indicator as a percentage.
-bool progress(char *message, int done, int total)
-{
-    static int last=0;
-    static bool first=false;
-
-    /*
-     *    We have already hit 100%, and a newline has been printed, so nothing
-     *    needs to be done.
-     */
-    if((done*100/total==100)&&(first==false)) return(true);
-
-    /*
-     *    Nothing has changed since the last time this function was called,
-     *    so do nothing, unless it's the first time!
-     */
-    if(done*100/total==last) {
-	if((done==0)&&(first==false)) {
-	    fprintf(stderr, "%s: %3d%%", message, done*100/total);
-	    first=true;
-	}
-	return(true);
-    }
-
-    /*
-     *    Erase what we printed last time, and print the new percentage.
-     */
-    last=done*100/total;
-
-    if(done>0) fprintf(stderr, "%c%c%c%c", 8, 8, 8, 8);
-    fprintf(stderr, "%3d%%", done*100/total);
-
-    /*
-     *    We have hit 100%, so reset static variables and print a newline.
-     */
-    if(last==100) {
-	first=false;
-	last=0;
-	fprintf(stderr, "\n");
-    }
-
-    return(true);
-}
-
-void help(void)
-{
-    unsigned int j;
-
-    for(j=0; j<COMMAND_SIZE; ++j) {
-	printf("#%-7s: %s\n", command[j].word.word, command[j].helpstring);
-    }
-}
-
-void load_personality(MODEL **model)
+void load_personality(const char* brnpath, const char* trnpath, const char* banpath,
+    const char* auxpath, const char* grtpath, const char* swppath, HAL_MODEL** model)
 {
     FILE *file;
-    static char *filename=NULL;
-
-    if(filename==NULL) filename=(char *)malloc(sizeof(char)*1);
-
-    /*
-     *		Allocate memory for the filename
-     */
-    filename=(char *)realloc(filename,
-			     sizeof(char)*(strlen(directory)+strlen(SEP)+12));
-    if(filename==NULL) error("load_personality","Unable to allocate filename");
 
     /*
      *		Check to see if the brain exists
      */
 
-    if(strcmp(directory, last)!=0) {
-	sprintf(filename, "%s%smegahal.brn", directory, SEP);
-	file=fopen(filename, "r");
-	if(file==NULL) {
-	    sprintf(filename, "%s%smegahal.trn", directory, SEP);
-	    file=fopen(filename, "r");
-	    if(file==NULL) {
-		fprintf(stdout, "Unable to change MegaHAL personality to \"%s\".\n"
-			"Reverting to MegaHAL personality \"%s\".\n", directory, last);
-		free(directory);
-		directory=strdup(last);
-		return;
-	    }
-	}
-	fclose(file);
-	fprintf(stdout, "Changing to MegaHAL personality \"%s\".\n", directory);
-    }
+	fprintf(stdout, "Changing to MegaHAL personality \"%s\".\n", brnpath);
 
     /*
      *		Free the current personality
@@ -2325,58 +1817,21 @@ void load_personality(MODEL **model)
      *		Train the model on a text if one exists
      */
 
-    sprintf(filename, "%s%smegahal.brn", directory, SEP);
-    if(load_model(filename, *model)==false) {
-	sprintf(filename, "%s%smegahal.trn", directory, SEP);
-	train(*model, filename);
+    if(load_model(brnpath, *model) == false) {
+	    train(*model, trnpath);
     }
 
     /*
      *		Read a dictionary containing banned keywords, auxiliary keywords,
      *		greeting keywords and swap keywords
      */
-    sprintf(filename, "%s%smegahal.ban", directory, SEP);
-    ban=initialize_list(filename);
-    sprintf(filename, "%s%smegahal.aux", directory, SEP);
-    aux=initialize_list(filename);
-    sprintf(filename, "%s%smegahal.grt", directory, SEP);
-    grt=initialize_list(filename);
-    sprintf(filename, "%s%smegahal.swp", directory, SEP);
-    swp=initialize_swap(filename);
+    ban=initialize_list(banpath);
+    aux=initialize_list(auxpath);
+    grt=initialize_list(grtpath);
+    swp=initialize_swap(swppath);
 }
 
-void change_personality(DICTIONARY *command, unsigned int position, MODEL **model)
-{
-
-    if(directory == NULL) {
-	directory = (char *)malloc(sizeof(char)*(strlen(DEFAULT)+1));
-	if(directory == NULL) {
-	    error("change_personality", "Unable to allocate directory");
-	} else {
-	    strcpy(directory, DEFAULT);
-	}
-    }
-
-    if(last == NULL) {
-	last = strdup(directory);
-    }
-
-    if((command == NULL)||((position+2)>=command->size)) {
-	/* no dir set, so we leave it to whatever was set above */
-    } else {
-        directory=(char *)realloc(directory,
-                                  sizeof(char)*(command->entry[position+2].length+1));
-        if(directory == NULL)
-            error("change_personality", "Unable to allocate directory");
-        strncpy(directory, command->entry[position+2].word,
-                command->entry[position+2].length);
-        directory[command->entry[position+2].length]='\0';
-    }
-
-    load_personality(model);
-}
-
-void free_words(DICTIONARY *words)
+void free_words(HAL_DICTIONARY *words)
 {
     register unsigned int i;
 
@@ -2386,8 +1841,7 @@ void free_words(DICTIONARY *words)
 	for(i=0; i<words->size; ++i) free_word(words->entry[i]);
 }
 
-void free_word(STRING word)
+void free_word(HAL_STRING word)
 {
     free(word.word);
 }
-
