@@ -101,8 +101,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <unistd.h>
-#include <getopt.h>
 #if !defined(AMIGA) && !defined(__mac_os)
 #include <malloc.h>
 #endif
@@ -121,6 +119,9 @@
 #if defined(DEBUG)
 #include "debug.h"
 #endif
+
+#include <chrono>
+#include <thread>
 
 #define P_THINK 40
 #define D_KEY 100000
@@ -166,11 +167,8 @@
 #define isspace(x) IsSpace(_AmigaLocale,x)
 #endif
 
-#ifndef __mac_os
-#undef FALSE
-#undef TRUE
-typedef enum { FALSE, TRUE } bool;
-#endif
+#define TRUE true
+#define FALSE false
 
 typedef struct {
     BYTE1 length;
@@ -315,9 +313,6 @@ static char *strdup(const char *);
 static void upper(char *);
 static void write_input(char *);
 static void write_output(char *);
-#if defined(DOS) || defined(__mac_os)
-static void usleep(int);
-#endif
 
 
 static char *format_output(char *);
@@ -756,7 +751,7 @@ char *read_input(char *prompt)
 	input[length]='\0';
     }
 
-    while(isspace(input[length-1])) --length;
+    while(isspace((unsigned char)input[length-1])) --length;
     input[length]='\0';
 
     /*
@@ -932,12 +927,12 @@ void capitalize(char *string)
     bool start=TRUE;
 
     for(i=0; i<strlen(string); ++i) {
-	if(isalpha(string[i])) {
-	    if(start==TRUE) string[i]=(char)toupper((int)string[i]);
-	    else string[i]=(char)tolower((int)string[i]);
+	if(isalpha((unsigned char)string[i])) {
+	    if(start==TRUE) string[i]=(char)toupper((unsigned char)string[i]);
+	    else string[i]=(char)tolower((unsigned char)string[i]);
 	    start=FALSE;
 	}
-	if((i>2)&&(strchr("!.?", string[i-1])!=NULL)&&(isspace(string[i])))
+	if((i>2)&&(strchr("!.?", string[i-1])!=NULL)&&(isspace((unsigned char)string[i])))
 	    start=TRUE;
     }
 }
@@ -1009,7 +1004,7 @@ static char *format_output(char *output)
     l=0;
     j=0;
     for(i=0; i<strlen(output); ++i) {
-	if((l==0)&&(isspace(output[i]))) continue;
+	if((l==0)&&(isspace((unsigned char)output[i]))) continue;
 	formatted[j]=output[i];
 	++j;
 	++l;
@@ -1227,8 +1222,8 @@ int wordcmp(STRING word1, STRING word2)
     bound=MIN(word1.length,word2.length);
 
     for(i=0; i<bound; ++i)
-	if(toupper(word1.word[i])!=toupper(word2.word[i]))
-	    return((int)(toupper(word1.word[i])-toupper(word2.word[i])));
+	if(toupper((unsigned char)word1.word[i])!=toupper((unsigned char)word2.word[i]))
+	    return((int)(toupper((unsigned char)word1.word[i])-toupper((unsigned char)word2.word[i])));
 
     if(word1.length<word2.length) return(-1);
     if(word1.length>word2.length) return(1);
@@ -2074,7 +2069,7 @@ void make_words(char *input, DICTIONARY *words)
      *		If the last word isn't punctuation, then replace it with a
      *		full-stop character.
      */
-    if(isalnum(words->entry[words->size-1].word[0])) {
+    if(isalnum((unsigned char)words->entry[words->size-1].word[0])) {
 	if(words->entry==NULL)
 	    words->entry=(STRING *)malloc((words->size+1)*sizeof(STRING));
 	else
@@ -2113,32 +2108,32 @@ bool boundary(char *string, int position)
 
     if(
 	(string[position]=='\'')&&
-	(isalpha(string[position-1])!=0)&&
-	(isalpha(string[position+1])!=0)
+	(isalpha((unsigned char)string[position-1])!=0)&&
+	(isalpha((unsigned char)string[position+1])!=0)
 	)
 	return(FALSE);
 
     if(
 	(position>1)&&
 	(string[position-1]=='\'')&&
-	(isalpha(string[position-2])!=0)&&
-	(isalpha(string[position])!=0)
+	(isalpha((unsigned char)string[position-2])!=0)&&
+	(isalpha((unsigned char)string[position])!=0)
 	)
 	return(FALSE);
 
     if(
-	(isalpha(string[position])!=0)&&
-	(isalpha(string[position-1])==0)
+	(isalpha((unsigned char)string[position])!=0)&&
+	(isalpha((unsigned char)string[position-1])==0)
 	)
 	return(TRUE);
 
     if(
-	(isalpha(string[position])==0)&&
-	(isalpha(string[position-1])!=0)
+	(isalpha((unsigned char)string[position])==0)&&
+	(isalpha((unsigned char)string[position-1])!=0)
 	)
 	return(TRUE);
 
-    if(isdigit(string[position])!=isdigit(string[position-1]))
+    if(isdigit((unsigned char)string[position])!=isdigit((unsigned char)string[position-1]))
 	return(TRUE);
 
     return(FALSE);
@@ -2190,7 +2185,7 @@ char *generate_reply(MODEL *model, DICTIONARY *words)
      *		Make sure some sort of reply exists
      */
     if(output_none==NULL) {
-	output_none=malloc(40);
+	output_none=(char*)malloc(40);
 	if(output_none!=NULL)
 	    strcpy(output_none, "I don't know enough to answer you yet!");
     }
@@ -2306,7 +2301,7 @@ void add_key(MODEL *model, DICTIONARY *keys, STRING word)
 
     symbol=find_word(model->dictionary, word);
     if(symbol==0) return;
-    if(isalnum(word.word[0])==0) return;
+    if(isalnum((unsigned char)word.word[0])==0) return;
     symbol=find_word(ban, word);
     if(symbol!=0) return;
     symbol=find_word(aux, word);
@@ -2328,7 +2323,7 @@ void add_aux(MODEL *model, DICTIONARY *keys, STRING word)
 
     symbol=find_word(model->dictionary, word);
     if(symbol==0) return;
-    if(isalnum(word.word[0])==0) return;
+    if(isalnum((unsigned char)word.word[0])==0) return;
     symbol=find_word(aux, word);
     if(symbol==0) return;
 
@@ -2545,7 +2540,7 @@ char *make_output(DICTIONARY *words)
     int length;
     static char *output_none=NULL;
 
-    if(output_none==NULL) output_none=malloc(40);
+    if(output_none==NULL) output_none= (char*)malloc(40);
 
     if(output==NULL) {
 	output=(char *)malloc(sizeof(char));
@@ -2879,7 +2874,7 @@ void delay(char *string)
      *		Display the entire string, one character at a time
      */
     for(i=0; i<(int)strlen(string)-1; ++i) typein(string[i]);
-    usleep((D_THINK+rnd(V_THINK)-rnd(V_THINK))/2);
+    std::this_thread::sleep_for(std::chrono::microseconds((D_THINK + rnd(V_THINK) - rnd(V_THINK)) / 2));
     typein(string[i]);
 }
 
@@ -2895,15 +2890,15 @@ void typein(char c)
     /*
      *		Standard keyboard delay
      */
-    usleep(D_KEY+rnd(V_KEY)-rnd(V_KEY));
+    std::this_thread::sleep_for(std::chrono::microseconds(D_KEY+rnd(V_KEY)-rnd(V_KEY)));
     fprintf(stdout, "%c", c);
     fflush(stdout);
 
     /*
      *		A random thinking delay
      */
-    if((!isalnum(c))&&((rnd(100))<P_THINK))
-	usleep(D_THINK+rnd(V_THINK)-rnd(V_THINK));
+    if((!isalnum((unsigned char)c))&&((rnd(100))<P_THINK))
+        std::this_thread::sleep_for(std::chrono::microseconds(D_THINK+rnd(V_THINK)-rnd(V_THINK)));
 }
 
 /*---------------------------------------------------------------------------*/
@@ -2948,8 +2943,11 @@ void die(int sig)
  */
 int rnd(int range)
 {
+    return rand() % range;
+    
+    /*
     static bool flag=FALSE;
-
+    
     if(flag==FALSE) {
 #if defined(__mac_os) || defined(DOS)
 	srand(time(NULL));
@@ -2963,31 +2961,8 @@ int rnd(int range)
 #else
     return(floor(drand48()*(double)(range)));
 #endif
+*/
 }
-
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Usleep
- *
- *		Purpose:		Simulate the Un*x function usleep.  Necessary because
- *						Microsoft provide no similar function.  Performed via
- *						a busy loop, which unnecessarily chews up the CPU.
- *						But Windows '95 isn't properly multitasking anyway, so
- *						no-one will notice.  Modified from a real Microsoft
- *						example, believe it or not!
- */
-#if defined(DOS) || defined(__mac_os)
-void usleep(int period)
-{
-    clock_t goal;
-
-    goal=(clock_t)(period*CLOCKS_PER_SEC)/(clock_t)1000000+clock();
-    while(goal>clock());
-}
-#endif
-
-/*---------------------------------------------------------------------------*/
 
 /*
  *		Function:	Strdup
@@ -3350,160 +3325,4 @@ void free_word(STRING word)
 {
     free(word.word);
 }
-
-/*===========================================================================*/
-
-/*
- *		$Log: megahal.c,v $
- *		Revision 1.2  2004/02/25 20:19:40  lfousse
- *		Updated header file and perl module.
- *		
- *		Revision 1.10  2004/02/23 11:12:29  lfousse
- *		Changed default working directory and added options to change it.
- *		
- *		Revision 1.9  2004/01/13 10:59:20  lfousse
- *		* Applied code cleaning already shipped with the debian package.
- *		* Removed pure debian stuff.
- *		* Added lacking setup.py file for python module.
- *		
- *		Revision 1.8  2003/08/26 12:49:16  lfousse
- *		* Added the perl interface
- *		* cleaned up the python interface a bit (but this
- *		  still need some work by a python "expert")
- *		* Added a learn_no_reply function.
- *		
- *		Revision 1.7  2003/08/18 21:45:23  lfousse
- *		Added megahal_learn_no_reply function for quick learning, and
- *		corresponding python interface.
- *		
- *		Revision 1.6  2002/10/16 04:32:53  davidw
- *		* megahal.c (change_personality): [ 541667 ] Added patch from Andrew
- *		  Burke to rework logic in change_personality.
- *		
- *		* megahal.c: Trailing white space cleanup.
- *		
- *		* python-interface.c: [ 546397 ] Change python include path to a more
- *		  recent version.  This should really be fixed by using some of
- *		  Python's build automation tools.
- *		
- *		Revision 1.5  2000/11/08 11:07:11  davidw
- *		Moved README to docs directory.
- *
- *		Changes to debian files.
- *
- *		Revision 1.4  2000/09/07 21:51:12  davidw
- *		Created some library functions that I think are workable, and moved
- *		everything else into megahal.c as static variables/functions.
- *
- *		Revision 1.3  2000/09/07 11:43:43  davidw
- *		Started hacking:
- *
- *		Reduced makefile targets, eliminating non-Linux OS's.  There should be
- *		a cleaner way to do this.
- *
- *		Added Tcl and Python C level interfaces.
- *
- *		Revision 1.23  1998/05/19 03:02:02  hutch
- *		Removed a small malloc() bug, and added a progress display for
- *		generate_reply().
- *
- *		Revision 1.22  1998/04/24 03:47:03  hutch
- *		Quick bug fix to get sunos version to work.
- *
- *		Revision 1.21  1998/04/24 03:39:51  hutch
- *		Added the BRAIN command, to allow user to change MegaHAL personalities
- *		on the fly.
- *
- *		Revision 1.20  1998/04/22 07:12:37  hutch
- *		A few small changes to get the DOS version to compile.
- *
- *		Revision 1.19  1998/04/21 10:10:56  hutch
- *		Fixed a few little errors.
- *
- *		Revision 1.18  1998/04/06 08:02:01  hutch
- *		Added debugging stuff, courtesy of Paul Baxter.
- *
- *		Revision 1.17  1998/04/02 01:34:20  hutch
- *		Added the help function and fixed a few errors.
- *
- *		Revision 1.16  1998/04/01 05:42:57  hutch
- *		Incorporated Mac code, including speech synthesis, and attempted
- *		to tidy up the code for multi-platform support.
- *
- *		Revision 1.15  1998/03/27 03:43:15  hutch
- *		Added AMIGA specific changes, thanks to Dag Agren.
- *
- *		Revision 1.14  1998/02/20 06:40:13  hutch
- *		Tidied up transcript file format.
- *
- *		Revision 1.13  1998/02/20 06:26:19  hutch
- *		Fixed random number generator and Seed() function (thanks to Mark
- *		Tarrabain), removed redundant code left over from the Loebner entry,
- *		prettied things up a little and destroyed several causes of memory
- *		leakage (although probably not all).
- *
- *		Revision 1.12  1998/02/04 02:55:11  hutch
- *		Fixed up memory allocation error which caused SunOS versions to crash.
- *
- *		Revision 1.11  1998/01/22 03:16:30  hutch
- *		Fixed several memory leaks, and the frustrating bug in the
- *		Write_Input routine.
- *
- *		Revision 1.10  1998/01/19 06:44:36  hutch
- *		Fixed MegaHAL to compile under Linux with a small patch credited
- *		to Joey Hess (joey@kitenet.net).  MegaHAL may now be included as
- *		part of the Debian Linux distribution.
- *
- *		Revision 1.9  1998/01/19 06:37:32  hutch
- *		Fixed a minor bug with end-of-sentence punctuation.
- *
- *		Revision 1.8  1997/12/24 03:17:01  hutch
- *		More bug fixes, and hopefully the final contest version!
- *
- *		Revision 1.7  1997/12/22  13:18:09  hutch
- *		A few more bug fixes, and non-repeating implemented.
- *
- *		Revision 1.6  1997/12/22 04:27:04  hutch
- *		A few minor bug fixes.
- *
- *		Revision 1.5  1997/12/15 04:35:59  hutch
- *		Final Loebner version!
- *
- *		Revision 1.4  1997/12/11 05:45:29  hutch
- *		The almost finished version.
- *
- *		Revision 1.3  1997/12/10 09:08:09  hutch
- *		Now Loebner complient (tm).
- *
- *		Revision 1.2  1997/12/08 06:22:32  hutch
- *		Tidied up.
- *
- *		Revision 1.1  1997/12/05  07:11:44  hutch
- *		Initial revision (lots of files were merged into one, RCS re-started)
- *
- *		Revision 1.7  1997/12/04 07:07:13  hutch
- *		Added load and save functions, and tidied up some code.
- *
- *		Revision 1.6  1997/12/02 08:34:47  hutch
- *		Added the ban, aux and swp functions.
- *
- *		Revision 1.5  1997/12/02 06:03:04  hutch
- *		Updated to use a special terminating symbol, and to store only
- *		branches of maximum depth, as they are the only ones used in
- *		the reply.
- *
- *		Revision 1.4  1997/10/28 09:23:12  hutch
- *		MegaHAL is babbling nicely, but without keywords.
- *
- *		Revision 1.3  1997/10/15  09:04:03  hutch
- *		MegaHAL can parrot back whatever the user says.
- *
- *		Revision 1.2  1997/07/21 04:03:28  hutch
- *		Fully working.
- *
- *		Revision 1.1  1997/07/15 01:55:25  hutch
- *		Initial revision.
- */
-
-/*===========================================================================*/
 

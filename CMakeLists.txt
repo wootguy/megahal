@@ -3,8 +3,8 @@ cmake_minimum_required(VERSION 3.6)
 project(megahal)
 
 set(SOURCE_FILES
-	src/main.c
-	src/megahal.h src/megahal.c
+	src/main.cpp
+	src/megahal.h src/megahal.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})
