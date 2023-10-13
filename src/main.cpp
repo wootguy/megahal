@@ -10,9 +10,10 @@ int main(int argc, char **argv)
 
     MegaHal hal = MegaHal();
 
-    hal.load_personality(".");
+    hal.load_personality("megahal");
 
-    char* output = hal.initial_greeting();
+    // initial greeting
+    char* output = hal.do_reply("hi");
     printf(output);
     printf("\n");
 

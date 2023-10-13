@@ -34,33 +34,31 @@ using namespace std;
 #define COOKIE "MegaHALv8"
 #define TIMEOUT 1
 
-void MegaHal::load_personality(const char* directory)
+void MegaHal::load_personality(const char* path)
 {
     FILE* file;
 
-    brnpath = string(directory) + "/megahal.brn";
-    trnpath = string(directory) + "/megahal.trn";
-    banpath = string(directory) + "/megahal.ban";
-    auxpath = string(directory) + "/megahal.aux";
-    grtpath = string(directory) + "/megahal.grt";
-    swppath = string(directory) + "/megahal.swp";
+    brnpath = string(path) + ".brn";
+    trnpath = string(path) + ".trn";
+
+    banpath = string(path) + ".ban";
+    auxpath = string(path) + ".aux";
+    swppath = string(path) + ".swp";
 
     free_everything();
 
     words = new_dictionary();
-    greets = new_dictionary();
 
     model = new_model(order);
-
-    if (load_model(brnpath.c_str(), model) == false) {
-        train(model, trnpath.c_str());
-    }
 
     // Read a dictionary containing banned keywords, auxiliary keywords, greeting keywords and swap keywords
     ban = initialize_list(banpath.c_str());
     aux = initialize_list(auxpath.c_str());
-    grt = initialize_list(grtpath.c_str());
     swp = initialize_swap(swppath.c_str());
+
+    if (load_model(brnpath.c_str(), model) == false) {
+        train(model, trnpath.c_str());
+    }
 }
 
 char* MegaHal::do_reply(char *input)
@@ -86,16 +84,6 @@ void MegaHal::learn_no_reply(char *input)
     make_words(input, words);
 
     learn(model, words);
-}
-
-char* MegaHal::initial_greeting(void)
-{
-    char *output;
-
-    make_greeting(greets);
-    output = generate_reply(model, greets);
-    capitalize(output);
-    return output;
 }
 
 void MegaHal::save_model()
@@ -138,17 +126,11 @@ void MegaHal::free_everything() {
     free_words(aux);
     free_dictionary(aux);
     free(aux);
-    free_words(grt);
-    free_dictionary(grt);
-    free(grt);
     free_swap(swp);
 
     //free_words(words); // word data points to memory handled by calling funcs
     free_dictionary(words);
     free(words);
-    free_words(greets);
-    free_dictionary(greets);
-    free(greets);
 }
 
 // Print the specified message to the error file.
@@ -1064,20 +1046,6 @@ bool MegaHal::boundary(char *string, int position)
     return(false);
 }
 
-// Put some special words into the dictionary so that the program will respond as if to a new judge.
-void MegaHal::make_greeting(HAL_DICTIONARY *words)
-{
-    register unsigned int i;
-
-    for(i=0; i<words->size; ++i)
-        free(words->entry[i].word);
-
-    free_dictionary(words);
-
-    if(grt->size>0)
-        add_word(words, grt->entry[rnd(grt->size)]);
-}
-
 // Take a string of user input and return a string of output which may vaguely be construed
 // as containing a reply to whatever is in the input string.
 char* MegaHal::generate_reply(HAL_MODEL *model, HAL_DICTIONARY *words)
@@ -1097,6 +1065,11 @@ char* MegaHal::generate_reply(HAL_MODEL *model, HAL_DICTIONARY *words)
      */
     snprintf(replyBuffer, HAL_MAX_REPLY_LEN, "I don't know enough to answer you yet!");
     replyBuffer[HAL_MAX_REPLY_LEN-1] = '\0';
+
+    // default random message, for when relevent replies all match the input message exactly
+    HAL_DICTIONARY* dummy = new_dictionary();
+    replywords = reply(model, dummy);
+    if (dissimilar(words, replywords) == true) make_output(replywords);
 
     /*
      *		Loop for the specified waiting period, generating and evaluating
