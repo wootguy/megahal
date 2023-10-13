@@ -1,6 +1,3 @@
-
-/*===========================================================================*/
-
 /*
  *  Copyright (C) 1998 Jason Hutchens
  *
@@ -17,109 +14,15 @@
  *  You should have received a copy of the GNU General Public License along
  *  with this program; if not, write to the Free Software Foundation, Inc.,
  *  675 Mass Ave, Cambridge, MA 02139, USA.
+ * 
+ *  Oct 2023 - Modified by wootguy
  */
-
-/*===========================================================================*/
-
-/*
- *		$Id: megahal.c,v 1.2 2004/02/25 20:19:40 lfousse Exp $
- *
- *		File:			megahal.c
- *
- *		Program:		MegaHAL
- *
- *		Purpose:		To simulate a natural language conversation with a psychotic
- *						computer.  This is achieved by learning from the user's
- *						input using a third-order Markov model on the word level.
- *						Words are considered to be sequences of characters separated
- *						by whitespace and punctuation.  Replies are generated
- *						randomly based on a keyword, and they are scored using
- *						measures of surprise.
- *
- *		Author:		Mr. Jason L. Hutchens (http://www.amristar.com.au/~hutch/)
- *
- *		WWW:		http://megahal.sourceforge.net
- *
- *		Compilation Notes
- *		=================
- *
- *		When compiling, be sure to link with the maths library so that the
- *		log() function can be found.
- *
- *		On the Macintosh, add the library SpeechLib to your project.  It is
- *		very important that you set the attributes to Import Weak.  You can
- *		do this by selecting the lib and then use Project Inspector from the
- *		Window menu.
- *
- *		CREDITS
- *		=======
- *
- *		Amiga (AmigaOS)
- *		---------------
- *		Dag Agren (dagren@ra.abo.fi)
- *
- *		DEC (OSF)
- *		---------
- *		Jason Hutchens (hutch@ciips.ee.uwa.edu.au)
- *
- *		Macintosh
- *		---------
- *		Paul Baxter (pbaxter@assistivetech.com)
- *		Doug Turner (dturner@best.com)
- *
- *		PC (Linux)
- *		----------
- *		Jason Hutchens (hutch@ciips.ee.uwa.edu.au)
- *
- *		PC (OS/2)
- *		---------
- *		Bjorn Karlowsky (?)
- *
- *		PC (Windows 3.11)
- *		-----------------
- *		Jim Crawford (pfister_@hotmail.com)
- *
- *		PC (Windows '95)
- *		----------------
- *		Jason Hutchens (hutch@ciips.ee.uwa.edu.au)
- *
- *		PPC (Linux)
- *		-----------
- *		Lucas Vergnettes (Lucasv@sdf.lonestar.org)
- *
- *		SGI (Irix)
- *		----------
- *		Jason Hutchens (hutch@ciips.ee.uwa.edu.au)
- *
- *		Sun (SunOS)
- *		-----------
- *		Jason Hutchens (hutch@ciips.ee.uwa.edu.au)
- */
-
-/*===========================================================================*/
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <stdarg.h>
-#if !defined(AMIGA) && !defined(__mac_os)
-#include <malloc.h>
-#endif
 #include <string.h>
-#include <signal.h>
-#include <math.h>
-#include <time.h>
 #include <ctype.h>
-#if defined(__mac_os)
-#include <types.h>
-#include <Speech.h>
-#else
-#include <sys/types.h>
-#endif
 #include "megahal.h"
-#if defined(DEBUG)
-#include "debug.h"
-#endif
-
 #include <chrono>
 #include <thread>
 
@@ -142,30 +45,7 @@
 #define BYTE2 unsigned short
 #define BYTE4 unsigned long
 
-#ifdef __mac_os
-#define bool Boolean
-#endif
-
-#ifdef DOS
-#define SEP "\\"
-#else
 #define SEP "/"
-#endif
-
-#ifdef AMIGA
-#undef toupper
-#define toupper(x) ToUpper(x)
-#undef tolower
-#define tolower(x) ToLower(x)
-#undef isalpha
-#define isalpha(x) IsAlpha(_AmigaLocale,x)
-#undef isalnum
-#define isalnum(x) IsAlNum(_AmigaLocale,x)
-#undef isdigit
-#define isdigit(x) IsDigit(_AmigaLocale,x)
-#undef isspace
-#define isspace(x) IsSpace(_AmigaLocale,x)
-#endif
 
 #define TRUE true
 #define FALSE false
@@ -203,7 +83,7 @@ typedef struct {
     DICTIONARY *dictionary;
 } MODEL;
 
-typedef enum { UNKNOWN, QUIT, EXIT, SAVE, DELAY, HELP, SPEECH, VOICELIST, VOICE, BRAIN, QUIET} COMMAND_WORDS;
+typedef enum { UNKNOWN, QUIT, EXIT, SAVE, DELAY, HELP, BRAIN, QUIET} COMMAND_WORDS;
 
 typedef struct {
     STRING word;
@@ -218,7 +98,6 @@ static int order=5;
 
 static bool typing_delay=FALSE;
 static bool noprompt=FALSE;
-static bool speech=FALSE;
 static bool quiet=FALSE;
 static bool nowrap=FALSE;
 static bool nobanner=FALSE;
@@ -246,9 +125,6 @@ static COMMAND command[] = {
     { { 4, "EXIT" }, "exits the program *without* saving MegaHAL's brain", EXIT },
     { { 4, "SAVE" }, "saves the current MegaHAL brain", SAVE },
     { { 5, "DELAY" }, "toggles MegaHAL's typing delay (off by default)", DELAY },
-    { { 6, "SPEECH" }, "toggles MegaHAL's speech (off by default)", SPEECH },
-    { { 6, "VOICES" }, "list available voices for speech", VOICELIST },
-    { { 5, "VOICE" }, "switches to voice specified", VOICE },
     { { 5, "BRAIN" }, "change to another MegaHAL personality", BRAIN },
     { { 4, "HELP" }, "displays this message", HELP },
     { { 5, "QUIET" }, "toggles MegaHAL's responses (on by default)",QUIET},
@@ -258,15 +134,6 @@ static COMMAND command[] = {
       { { 5, "STATS-ALL" },"Display stats for the whole lifetime",STATS-ALL},
     */
 };
-
-#ifdef AMIGA
-struct Locale *_AmigaLocale;
-#endif
-
-#ifdef __mac_os
-Boolean gSpeechExists = false;
-SpeechChannel gSpeechChannel = nil;
-#endif
 
 /* FIXME - these need to be static  */
 
@@ -279,7 +146,6 @@ static BYTE2 add_word(DICTIONARY *, STRING);
 static int babble(MODEL *, DICTIONARY *, DICTIONARY *);
 static bool boundary(char *, int);
 static void capitalize(char *);
-static void changevoice(DICTIONARY *, int);
 static void change_personality(DICTIONARY *, unsigned int, MODEL **);
 static void delay(char *);
 static void die(int);
@@ -287,7 +153,6 @@ static bool dissimilar(DICTIONARY *, DICTIONARY *);
 static void error(char *, char *, ...);
 static float evaluate_reply(MODEL *, DICTIONARY *, DICTIONARY *);
 static COMMAND_WORDS execute_command(DICTIONARY *, int *);
-static void exithal(void);
 static TREE *find_symbol(TREE *, int);
 static TREE *find_symbol_add(TREE *, int);
 static BYTE2 find_word(DICTIONARY *, STRING);
@@ -295,21 +160,13 @@ static char *generate_reply(MODEL *, DICTIONARY *);
 static void help(void);
 static void ignore(int);
 static bool initialize_error(char *);
-#ifdef __mac_os
-static bool initialize_speech(void);
-#endif
 static bool initialize_status(char *);
 static void learn(MODEL *, DICTIONARY *);
-static void listvoices(void);
 static void make_greeting(DICTIONARY *);
 static void make_words(char *, DICTIONARY *);
 static DICTIONARY *new_dictionary(void);
 
-static char *read_input(char *);
 static void save_model(char *, MODEL *);
-#ifdef __mac_os
-static char *strdup(const char *);
-#endif
 static void upper(char *);
 static void write_input(char *);
 static void write_output(char *);
@@ -345,7 +202,6 @@ static int search_dictionary(DICTIONARY *, STRING, bool *);
 static int search_node(TREE *, int, bool *);
 static int seed(MODEL *, DICTIONARY *);
 static void show_dictionary(DICTIONARY *);
-static void speak(char *);
 static bool status(char *, ...);
 static void train(MODEL *, char *);
 static void typein(char);
@@ -357,11 +213,7 @@ static bool word_exists(DICTIONARY *, STRING);
 static int rnd(int);
 
 
-/* Function: setnoprompt
-
-   Purpose: Set noprompt variable.
-
- */
+// Purpose: Set noprompt variable.
 void megahal_setnoprompt(void)
 {
     noprompt = TRUE;
@@ -371,6 +223,7 @@ void megahal_setnowrap (void)
 {
     nowrap = TRUE;
 }
+
 void megahal_setnobanner (void)
 {
     nobanner = TRUE;
@@ -391,16 +244,7 @@ void megahal_setdirectory (char *dir)
     directory = dir;
 }
 
-/*
-   megahal_initialize --
-
-   Initialize various brains and files.
-
-   Results:
-
-   None.
-*/
-
+// Initialize various brains and files.
 void megahal_initialize(void)
 {
     errorfp = stderr;
@@ -436,14 +280,8 @@ void megahal_initialize(void)
     change_personality(NULL, 0, &model);
 }
 
-/*
-   megahal_do_reply --
-
-   Take string as input, and return allocated string as output.  The
-   user is responsible for freeing this memory.
-
-  */
-
+// Take string as input, and return allocated string as output.  The
+// user is responsible for freeing this memory.
 char *megahal_do_reply(char *input, int log)
 {
     char *output = NULL;
@@ -461,13 +299,7 @@ char *megahal_do_reply(char *input, int log)
     return output;
 }
 
-/*
-   megahal_learn_no_reply --
-
-   Take string as input, update model but don't generate reply.
-
-  */
-
+// Take string as input, update model but don't generate reply.
 void megahal_learn_no_reply(char *input, int log)
 {
     if (log != 0)
@@ -480,14 +312,8 @@ void megahal_learn_no_reply(char *input, int log)
     learn(model, words);
 }
 
-/*
-   megahal_initial_greeting --
-
-   This function returns an initial greeting.  It can be used to start
-   Megahal conversations, but it isn't necessary.
-
-  */
-
+// This function returns an initial greeting.  It can be used to start
+// Megahal conversations, but it isn't necessary.
 char *megahal_initial_greeting(void)
 {
     char *output;
@@ -497,45 +323,16 @@ char *megahal_initial_greeting(void)
     return output;
 }
 
-/*
-   megahal_output --
-
-   This function pretty prints output.
-
-   Wrapper function to have things in the right namespace.
-
-*/
-
+// This function pretty prints output.
+// Wrapper function to have things in the right namespace.
 void megahal_output(char *output)
 {
     if(!quiet)
 	write_output(output);
 }
 
-/*
-   megahal_input --
-
-   Get a string from stdin, using a prompt.
-
-  */
-
-char *megahal_input(char *prompt)
-{
-    if (noprompt)
-	return read_input("");
-    else
-	return read_input(prompt);
-}
-
-/*
-   megahal_command --
-
-   Check to see if input is a megahal command, and if so, act upon it.
-
-   Returns 1 if it is a command, 0 if it is not.
-
-  */
-
+// Check to see if input is a megahal command, and if so, act upon it.
+// Returns 1 if it is a command, 0 if it is not.
 int megahal_command(char *input)
 {
     int position = 0;
@@ -544,11 +341,11 @@ int megahal_command(char *input)
     make_words(input,words);
     switch(execute_command(words, &position)) {
     case EXIT:
-	exithal();
+	exit(0);
 	break;
     case QUIT:
 	save_model("megahal.brn", model);
-	exithal();
+    exit(0);
 	break;
     case SAVE:
 	save_model("megahal.brn", model);
@@ -557,18 +354,8 @@ int megahal_command(char *input)
 	typing_delay=!typing_delay;
 	printf("MegaHAL typing is now %s.\n", typing_delay?"on":"off");
 	return 1;
-    case SPEECH:
-	speech=!speech;
-	printf("MegaHAL speech is now %s.\n", speech?"on":"off");
-	return 1;
     case HELP:
 	help();
-	return 1;
-    case VOICELIST:
-	listvoices();
-	return 1;
-    case VOICE:
-	changevoice(words, position);
 	return 1;
     case BRAIN:
 	change_personality(words, position, &model);
@@ -585,32 +372,18 @@ int megahal_command(char *input)
     return 0;
 }
 
-/*
-   megahal_cleanup --
-
-   Clean up everything. Prepare for exit.
-
-  */
-
+// Clean up everything. Prepare for exit.
 void megahal_cleanup(void)
 {
     save_model("megahal.brn", model);
-
-#ifdef AMIGA
-    CloseLocale(_AmigaLocale);
-#endif
 }
 
 
+//
+// Private functions
+//
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Execute_Command
- *
- *		Purpose:		Detect whether the user has typed a command, and
- *						execute the corresponding function.
- */
+// Detect whether the user has typed a command, and execute the corresponding function.
 COMMAND_WORDS execute_command(DICTIONARY *words, int *position)
 {
     register unsigned int i;
@@ -647,126 +420,7 @@ COMMAND_WORDS execute_command(DICTIONARY *words, int *position)
     return(UNKNOWN);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	ExitHAL
- *
- *		Purpose:		Terminate the program.
- */
-void exithal(void)
-{
-#ifdef __mac_os
-    /*
-     *		Must be called because it does use some system memory
-     */
-    if (gSpeechChannel) {
-	StopSpeech(gSpeechChannel);
-	DisposeSpeechChannel(gSpeechChannel);
-	gSpeechChannel = nil;
-    }
-#endif
-
-    exit(0);
-}
-
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Read_Input
- *
- *		Purpose:		Read an input string from the user.
- */
-char *read_input(char *prompt)
-{
-    static char *input=NULL;
-    bool finish;
-    int length;
-    int c;
-
-    /*
-     *		Perform some initializations.  The finish boolean variable is used
-     *		to detect a double line-feed, while length contains the number of
-     *		characters in the input string.
-     */
-    finish=FALSE;
-    length=0;
-    if(input==NULL) {
-	input=(char *)malloc(sizeof(char));
-	if(input==NULL) {
-	    error("read_input", "Unable to allocate the input string");
-	    return(input);
-	}
-    }
-
-    /*
-     *		Display the prompt to the user.
-     */
-    fprintf(stdout, prompt);
-    fflush(stdout);
-
-    /*
-     *		Loop forever, reading characters and putting them into the input
-     *		string.
-     */
-    while(TRUE) {
-
-	/*
-	 *		Read a single character from stdin.
-	 */
-	c=getc(stdin);
-
-	/*
-	 *		If the character is a line-feed, then set the finish variable
-	 *		to TRUE.  If it already is TRUE, then this is a double line-feed,
-	 *		in which case we should exit.  After a line-feed, display the
-	 *		prompt again, and set the character to the space character, as
-	 *		we don't permit linefeeds to appear in the input.
-	 */
-	if((char)(c)=='\n') {
-	    if(finish==TRUE) break;
-	    fprintf(stdout, prompt);
-	    fflush(stdout);
-	    finish=TRUE;
-	    c=32;
-	} else {
-	    finish=FALSE;
-	}
-
-	/*
-	 *		Re-allocate the input string so that it can hold one more
-	 *		character.
-	 */
-	++length;
-	input=(char *)realloc((char *)input,sizeof(char)*(length+1));
-	if(input==NULL) {
-	    error("read_input", "Unable to re-allocate the input string");
-	    return(NULL);
-	}
-
-	/*
-	 *		Add the character just read to the input string.
-	 */
-	input[length-1]=(char)c;
-	input[length]='\0';
-    }
-
-    while(isspace((unsigned char)input[length-1])) --length;
-    input[length]='\0';
-
-    /*
-     *		We have finished, so return the input string.
-     */
-    return(input);
-}
-
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Initialize_Error
- *
- *		Purpose:		Close the current error file pointer, and open a new one.
- */
+// Close the current error file pointer, and open a new one.
 bool initialize_error(char *filename)
 {
     if(errorfp!=stderr) fclose(errorfp);
@@ -781,13 +435,7 @@ bool initialize_error(char *filename)
     return(print_header(errorfp));
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Error
- *
- *		Purpose:		Print the specified message to the error file.
- */
+// Print the specified message to the error file.
 void error(char *title, char *fmt, ...)
 {
     va_list argp;
@@ -803,8 +451,6 @@ void error(char *title, char *fmt, ...)
 
     exit(1);
 }
-
-/*---------------------------------------------------------------------------*/
 
 bool warn(char *title, char *fmt, ...)
 {
@@ -822,13 +468,7 @@ bool warn(char *title, char *fmt, ...)
     return(TRUE);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Initialize_Status
- *
- *		Purpose:		Close the current status file pointer, and open a new one.
- */
+// Close the current status file pointer, and open a new one.
 bool initialize_status(char *filename)
 {
     if(statusfp!=stdout) fclose(statusfp);
@@ -841,13 +481,7 @@ bool initialize_status(char *filename)
     return(print_header(statusfp));
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Status
- *
- *		Purpose:		Print the specified message to the status file.
- */
+// Print the specified message to the status file.
 bool status(char *fmt, ...)
 {
     va_list argp;
@@ -860,13 +494,7 @@ bool status(char *fmt, ...)
     return(TRUE);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Print_Header
- *
- *		Purpose:		Display a copyright message and timestamp.
- */
+// Display a copyright message and timestamp.
 bool print_header(FILE *file)
 {
     time_t clock;
@@ -885,20 +513,13 @@ bool print_header(FILE *file)
     return(TRUE);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *    Function:   Write_Output
- *
- *    Purpose:    Display the output string.
- */
+// Display the output string.
 void write_output(char *output)
 {
     char *formatted;
     char *bit;
 
     capitalize(output);
-    speak(output);
 
     width=75;
     formatted=format_output(output);
@@ -914,13 +535,7 @@ void write_output(char *output)
     }
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Capitalize
- *
- *		Purpose:		Convert a string to look nice.
- */
+// Convert a string to look nice.
 void capitalize(char *string)
 {
     register unsigned int i;
@@ -937,13 +552,7 @@ void capitalize(char *string)
     }
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Upper
- *
- *		Purpose:		Convert a string to its uppercase representation.
- */
+// Convert a string to its uppercase representation.
 void upper(char *string)
 {
     register unsigned int i;
@@ -951,13 +560,7 @@ void upper(char *string)
     for(i=0; i<strlen(string); ++i) string[i]=(char)toupper((int)string[i]);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *    Function:   Write_Input
- *
- *    Purpose:    Log the user's input
- */
+// Log the user's input
 void write_input(char *input)
 {
     char *formatted;
@@ -974,14 +577,7 @@ void write_input(char *input)
     }
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *    Function:   Format_Output
- *
- *    Purpose:    Format a string to display nicely on a terminal of a given
- *                width.
- */
+// Format a string to display nicely on a terminal of a given width.
 static char *format_output(char *output)
 {
     static char *formatted=NULL;
@@ -1026,16 +622,8 @@ static char *format_output(char *output)
     return(formatted);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Add_Word
- *
- *		Purpose:		Add a word to a dictionary, and return the identifier
- *						assigned to the word.  If the word already exists in
- *						the dictionary, then return its current identifier
- *						without adding it again.
- */
+// Add a word to a dictionary, and return the identifierassigned to the word.If the word already
+// exists in the dictionary, then return its current identifier without adding it again.
 BYTE2 add_word(DICTIONARY *dictionary, STRING word)
 {
     register int i;
@@ -1113,15 +701,8 @@ fail:
     return(0);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Search_Dictionary
- *
- *		Purpose:		Search the dictionary for the specified word, returning its
- *						position in the index if found, or the position where it
- *						should be inserted otherwise.
- */
+// Search the dictionary for the specified word, returning its position in the index if found, 
+// or the position where it should be inserted otherwise.
 int search_dictionary(DICTIONARY *dictionary, STRING word, bool *find)
 {
     int position;
@@ -1185,15 +766,8 @@ notfound:
     return(position);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Find_Word
- *
- *		Purpose:		Return the symbol corresponding to the word specified.
- *						We assume that the word with index zero is equal to a
- *						NULL word, indicating an error condition.
- */
+// Return the symbol corresponding to the word specified. We assume that the word with index zero
+// is equal to a NULL word, indicating an error condition.
 BYTE2 find_word(DICTIONARY *dictionary, STRING word)
 {
     int position;
@@ -1205,15 +779,8 @@ BYTE2 find_word(DICTIONARY *dictionary, STRING word)
     else return(0);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Wordcmp
- *
- *		Purpose:		Compare two words, and return an integer indicating whether
- *						the first word is less than, equal to or greater than the
- *						second word.
- */
+// Compare two words, and return an integer indicating whether the first word is less than,
+// equal to or greater than the second word
 int wordcmp(STRING word1, STRING word2)
 {
     register int i;
@@ -1231,13 +798,7 @@ int wordcmp(STRING word1, STRING word2)
     return(0);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Free_Dictionary
- *
- *		Purpose:		Release the memory consumed by the dictionary.
- */
+// Release the memory consumed by the dictionary.
 void free_dictionary(DICTIONARY *dictionary)
 {
     if(dictionary==NULL) return;
@@ -1251,8 +812,6 @@ void free_dictionary(DICTIONARY *dictionary)
     }
     dictionary->size=0;
 }
-
-/*---------------------------------------------------------------------------*/
 
 void free_model(MODEL *model)
 {
@@ -1272,8 +831,6 @@ void free_model(MODEL *model)
     }
     free(model);
 }
-
-/*---------------------------------------------------------------------------*/
 
 void free_tree(TREE *tree)
 {
@@ -1296,13 +853,7 @@ void free_tree(TREE *tree)
     free(tree);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Initialize_Dictionary
- *
- *		Purpose:		Add dummy words to the dictionary.
- */
+// Add dummy words to the dictionary.
 void initialize_dictionary(DICTIONARY *dictionary)
 {
     STRING word={ 7, "<ERROR>" };
@@ -1312,13 +863,7 @@ void initialize_dictionary(DICTIONARY *dictionary)
     (void)add_word(dictionary, end);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	New_Dictionary
- *
- *		Purpose:		Allocate room for a new dictionary.
- */
+// Allocate room for a new dictionary.
 DICTIONARY *new_dictionary(void)
 {
     DICTIONARY *dictionary=NULL;
@@ -1336,13 +881,7 @@ DICTIONARY *new_dictionary(void)
     return(dictionary);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Save_Dictionary
- *
- *		Purpose:		Save a dictionary to the specified file.
- */
+// Save a dictionary to the specified file.
 void save_dictionary(FILE *file, DICTIONARY *dictionary)
 {
     register unsigned int i;
@@ -1356,13 +895,7 @@ void save_dictionary(FILE *file, DICTIONARY *dictionary)
     progress(NULL, 1, 1);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Load_Dictionary
- *
- *		Purpose:		Load a dictionary from the specified file.
- */
+// Load a dictionary from the specified file.
 void load_dictionary(FILE *file, DICTIONARY *dictionary)
 {
     register int i;
@@ -1377,13 +910,7 @@ void load_dictionary(FILE *file, DICTIONARY *dictionary)
     progress(NULL, 1, 1);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Save_Word
- *
- *		Purpose:		Save a dictionary word to a file.
- */
+// Save a dictionary word to a file.
 void save_word(FILE *file, STRING word)
 {
     register unsigned int i;
@@ -1393,13 +920,7 @@ void save_word(FILE *file, STRING word)
 	fwrite(&(word.word[i]), sizeof(char), 1, file);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Load_Word
- *
- *		Purpose:		Load a dictionary word from a file.
- */
+// Load a dictionary word from a file.
 void load_word(FILE *file, DICTIONARY *dictionary)
 {
     register unsigned int i;
@@ -1417,14 +938,7 @@ void load_word(FILE *file, DICTIONARY *dictionary)
     free(word.word);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	New_Node
- *
- *		Purpose:		Allocate a new node for the n-gram tree, and initialise
- *						its contents to sensible values.
- */
+// Allocate a new node for the n-gram tree, and initialise its contents to sensible values.
 TREE *new_node(void)
 {
     TREE *node=NULL;
@@ -1454,13 +968,7 @@ fail:
     return(NULL);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	New_Model
- *
- *		Purpose:		Create and initialise a new ngram model.
- */
+// Create and initialise a new ngram model.
 MODEL *new_model(int order)
 {
     MODEL *model=NULL;
@@ -1489,13 +997,7 @@ fail:
     return(NULL);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Update_Model
- *
- *		Purpose:		Update the model with the specified symbol.
- */
+// Update the model with the specified symbol.
 void update_model(MODEL *model, int symbol)
 {
     register unsigned int i;
@@ -1511,13 +1013,7 @@ void update_model(MODEL *model, int symbol)
     return;
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Update_Context
- *
- *		Purpose:		Update the context of the model without adding the symbol.
- */
+// Update the context of the model without adding the symbol.
 void update_context(MODEL *model, int symbol)
 {
     register unsigned int i;
@@ -1527,15 +1023,8 @@ void update_context(MODEL *model, int symbol)
 	    model->context[i]=find_symbol(model->context[i-1], symbol);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Add_Symbol
- *
- *		Purpose:		Update the statistics of the specified tree with the
- *						specified symbol, which may mean growing the tree if the
- *						symbol hasn't been seen in this context before.
- */
+// Update the statistics of the specified tree with the specified symbol, which may mean
+// growing the tree if the symbol hasn't been seen in this context before.
 TREE *add_symbol(TREE *tree, BYTE2 symbol)
 {
     TREE *node=NULL;
@@ -1556,14 +1045,7 @@ TREE *add_symbol(TREE *tree, BYTE2 symbol)
     return(node);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Find_Symbol
- *
- *		Purpose:		Return a pointer to the child node, if one exists, which
- *						contains the specified symbol.
- */
+// Return a pointer to the child node, if one exists, which contains the specified symbol.
 TREE *find_symbol(TREE *node, int symbol)
 {
     register unsigned int i;
@@ -1579,16 +1061,8 @@ TREE *find_symbol(TREE *node, int symbol)
     return(found);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Find_Symbol_Add
- *
- *		Purpose:		This function is conceptually similar to find_symbol,
- *						apart from the fact that if the symbol is not found,
- *						a new node is automatically allocated and added to the
- *						tree.
- */
+// This function is conceptually similar to find_symbol, apart from the fact that if th
+// symbol is not found, a new node is automatically allocatedand added to the tree.
 TREE *find_symbol_add(TREE *node, int symbol)
 {
     register unsigned int i;
@@ -1611,14 +1085,7 @@ TREE *find_symbol_add(TREE *node, int symbol)
     return(found);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Add_Node
- *
- *		Purpose:		Attach a new child node to the sub-tree of the tree
- *						specified.
- */
+// Attach a new child node to the sub-tree of the tree specified.
 void add_node(TREE *tree, TREE *node, int position)
 {
     register int i;
@@ -1652,17 +1119,9 @@ void add_node(TREE *tree, TREE *node, int position)
     tree->branch+=1;
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Search_Node
- *
- *		Purpose:		Perform a binary search for the specified symbol on the
- *						subtree of the given node.  Return the position of the
- *						child node in the subtree if the symbol was found, or the
- *						position where it should be inserted to keep the subtree
- *						sorted if it wasn't.
- */
+// Perform a binary search for the specified symbol on the subtree of the given node.
+// Return the position of the child node in the subtree if the symbol was found, or the
+// position where it should be inserted to keep the subtree sorted if it wasn't.
 int search_node(TREE *node, int symbol, bool *found_symbol)
 {
     register unsigned int position;
@@ -1714,13 +1173,7 @@ notfound:
     return(position);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Initialize_Context
- *
- *		Purpose:		Set the context of the model to a default value.
- */
+// Set the context of the model to a default value.
 void initialize_context(MODEL *model)
 {
     register unsigned int i;
@@ -1728,13 +1181,7 @@ void initialize_context(MODEL *model)
     for(i=0; i<=model->order; ++i) model->context[i]=NULL;
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Learn
- *
- *		Purpose:		Learn from the user's input.
- */
+// Learn from the user's input.
 void learn(MODEL *model, DICTIONARY *words)
 {
     register unsigned int i;
@@ -1787,13 +1234,7 @@ void learn(MODEL *model, DICTIONARY *words)
     return;
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Train
- *
- *		Purpose:	 	Infer a MegaHAL brain from the contents of a text file.
- */
+// Infer a MegaHAL brain from the contents of a text file.
 void train(MODEL *model, char *filename)
 {
     FILE *file;
@@ -1836,13 +1277,7 @@ void train(MODEL *model, char *filename)
     fclose(file);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Show_Dictionary
- *
- *		Purpose:		Display the dictionary for training purposes.
- */
+// Display the dictionary for training purposes.
 void show_dictionary(DICTIONARY *dictionary)
 {
     register unsigned int i;
@@ -1864,13 +1299,7 @@ void show_dictionary(DICTIONARY *dictionary)
     fclose(file);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Save_Model
- *
- *		Purpose:		Save the current state to a MegaHAL brain file.
- */
+// Save the current state to a MegaHAL brain file.
 void save_model(char *modelname, MODEL *model)
 {
     FILE *file;
@@ -1904,13 +1333,7 @@ void save_model(char *modelname, MODEL *model)
     fclose(file);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Save_Tree
- *
- *		Purpose:		Save a tree structure to the specified file.
- */
+// Save a tree structure to the specified file.
 void save_tree(FILE *file, TREE *node)
 {
     static int level=0;
@@ -1931,13 +1354,7 @@ void save_tree(FILE *file, TREE *node)
     if(level==0) progress(NULL, 1, 1);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Load_Tree
- *
- *		Purpose:		Load a tree structure from the specified file.
- */
+// Load a tree structure from the specified file.
 void load_tree(FILE *file, TREE *node)
 {
     static int level=0;
@@ -1967,13 +1384,7 @@ void load_tree(FILE *file, TREE *node)
     if(level==0) progress(NULL, 1, 1);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Load_Model
- *
- *		Purpose:		Load a model into memory.
- */
+// Load a model into memory.
 bool load_model(char *filename, MODEL *model)
 {
     FILE *file;
@@ -2008,13 +1419,7 @@ fail:
     return(FALSE);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *    Function:   Make_Words
- *
- *    Purpose:    Break a string into an array of words.
- */
+// Break a string into an array of words.
 void make_words(char *input, DICTIONARY *words)
 {
     int offset=0;
@@ -2091,13 +1496,7 @@ void make_words(char *input, DICTIONARY *words)
     return;
 }
 
-/*---------------------------------------------------------------------------*/
-/*
- *		Function:	Boundary
- *
- *		Purpose:		Return whether or not a word boundary exists in a string
- *						at the specified location.
- */
+// Return whether or not a word boundary exists in a string at the specified location.
 bool boundary(char *string, int position)
 {
     if(position==0)
@@ -2139,13 +1538,7 @@ bool boundary(char *string, int position)
     return(FALSE);
 }
 
-/*---------------------------------------------------------------------------*/
-/*
- *		Function:	Make_Greeting
- *
- *		Purpose:		Put some special words into the dictionary so that the
- *						program will respond as if to a new judge.
- */
+// Put some special words into the dictionary so that the program will respond as if to a new judge.
 void make_greeting(DICTIONARY *words)
 {
     register unsigned int i;
@@ -2155,14 +1548,8 @@ void make_greeting(DICTIONARY *words)
     if(grt->size>0) (void)add_word(words, grt->entry[rnd(grt->size)]);
 }
 
-/*---------------------------------------------------------------------------*/
-/*
- *    Function:   Generate_Reply
- *
- *    Purpose:    Take a string of user input and return a string of output
- *                which may vaguely be construed as containing a reply to
- *                whatever is in the input string.
- */
+// Take a string of user input and return a string of output which may vaguely be construed
+// as containing a reply to whatever is in the input string.
 char *generate_reply(MODEL *model, DICTIONARY *words)
 {
     static DICTIONARY *dummy=NULL;
@@ -2220,14 +1607,7 @@ char *generate_reply(MODEL *model, DICTIONARY *words)
     return(output);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Dissimilar
- *
- *		Purpose:		Return TRUE or FALSE depending on whether the dictionaries
- *						are the same or not.
- */
+// Return TRUE or FALSE depending on whether the dictionaries are the same or not.
 bool dissimilar(DICTIONARY *words1, DICTIONARY *words2)
 {
     register unsigned int i;
@@ -2238,15 +1618,8 @@ bool dissimilar(DICTIONARY *words1, DICTIONARY *words2)
     return(FALSE);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Make_Keywords
- *
- *		Purpose:		Put all the interesting words from the user's input into
- *						a keywords dictionary, which will be used when generating
- *						a reply.
- */
+// Put all the interesting words from the user's input into a keywords dictionary,
+// which will be used when generating a reply.
 DICTIONARY *make_keywords(MODEL *model, DICTIONARY *words)
 {
     static DICTIONARY *keys=NULL;
@@ -2288,13 +1661,7 @@ DICTIONARY *make_keywords(MODEL *model, DICTIONARY *words)
     return(keys);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Add_Key
- *
- *		Purpose:		Add a word to the keyword dictionary.
- */
+// Add a word to the keyword dictionary.
 void add_key(MODEL *model, DICTIONARY *keys, STRING word)
 {
     int symbol;
@@ -2310,13 +1677,7 @@ void add_key(MODEL *model, DICTIONARY *keys, STRING word)
     add_word(keys, word);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Add_Aux
- *
- *		Purpose:		Add an auxilliary keyword to the keyword dictionary.
- */
+// Add an auxilliary keyword to the keyword dictionary.
 void add_aux(MODEL *model, DICTIONARY *keys, STRING word)
 {
     int symbol;
@@ -2330,14 +1691,7 @@ void add_aux(MODEL *model, DICTIONARY *keys, STRING word)
     add_word(keys, word);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Reply
- *
- *		Purpose:		Generate a dictionary of reply words appropriate to the
- *						given dictionary of keywords.
- */
+// Generate a dictionary of reply words appropriate to the given dictionary of keywords.
 DICTIONARY *reply(MODEL *model, DICTIONARY *keys)
 {
     static DICTIONARY *replies=NULL;
@@ -2450,14 +1804,7 @@ DICTIONARY *reply(MODEL *model, DICTIONARY *keys)
     return(replies);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Evaluate_Reply
- *
- *		Purpose:		Measure the average surprise of keywords relative to the
- *						language model.
- */
+// Measure the average surprise of keywords relative to the language model.
 float evaluate_reply(MODEL *model, DICTIONARY *keys, DICTIONARY *words)
 {
     register unsigned int i;
@@ -2525,13 +1872,7 @@ float evaluate_reply(MODEL *model, DICTIONARY *keys, DICTIONARY *words)
     return(entropy);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Make_Output
- *
- *		Purpose:		Generate a string from the dictionary of reply words.
- */
+// Generate a string from the dictionary of reply words.
 char *make_output(DICTIONARY *words)
 {
     static char *output=NULL;
@@ -2577,17 +1918,9 @@ char *make_output(DICTIONARY *words)
     return(output);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Babble
- *
- *		Purpose:		Return a random symbol from the current context, or a
- *						zero symbol identifier if we've reached either the
- *						start or end of the sentence.  Select the symbol based
- *						on probabilities, favouring keywords.  In all cases,
- *						use the longest available context to choose the symbol.
- */
+// Return a random symbol from the current context, or a zero symbol identifier if we've 
+// reached either the start or end of the sentence.Select the symbol based on probabilities,
+// favouring keywords. In all cases, use the longest available context to choose the symbol.
 int babble(MODEL *model, DICTIONARY *keys, DICTIONARY *words)
 {
     TREE *node;
@@ -2634,13 +1967,7 @@ int babble(MODEL *model, DICTIONARY *keys, DICTIONARY *words)
     return(symbol);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Word_Exists
- *
- *		Purpose:		A silly brute-force searcher for the reply string.
- */
+// A silly brute-force searcher for the reply string.
 bool word_exists(DICTIONARY *dictionary, STRING word)
 {
     register unsigned int i;
@@ -2651,14 +1978,7 @@ bool word_exists(DICTIONARY *dictionary, STRING word)
     return(FALSE);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Seed
- *
- *		Purpose:		Seed the reply by guaranteeing that it contains a
- *						keyword, if one exists.
- */
+// Seed the reply by guaranteeing that it contains a keyword, if one exists.
 int seed(MODEL *model, DICTIONARY *keys)
 {
     register unsigned int i;
@@ -2691,13 +2011,7 @@ int seed(MODEL *model, DICTIONARY *keys)
     return(symbol);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	New_Swap
- *
- *		Purpose:		Allocate a new swap structure.
- */
+// Allocate a new swap structure.
 SWAP *new_swap(void)
 {
     SWAP *list;
@@ -2714,13 +2028,7 @@ SWAP *new_swap(void)
     return(list);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Add_Swap
- *
- *		Purpose:		Add a new entry to the swap structure.
- */
+// Add a new entry to the swap structure.
 void add_swap(SWAP *list, char *s, char *d)
 {
     list->size+=1;
@@ -2759,13 +2067,7 @@ void add_swap(SWAP *list, char *s, char *d)
     list->to[list->size-1].word=strdup(d);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Initialize_Swap
- *
- *		Purpose:		Read a swap structure from a file.
- */
+// Read a swap structure from a file.
 SWAP *initialize_swap(char *filename)
 {
     SWAP *list;
@@ -2795,8 +2097,6 @@ SWAP *initialize_swap(char *filename)
     return(list);
 }
 
-/*---------------------------------------------------------------------------*/
-
 void free_swap(SWAP *swap)
 {
     register int i;
@@ -2812,13 +2112,7 @@ void free_swap(SWAP *swap)
     free(swap);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Initialize_List
- *
- *		Purpose:		Read a dictionary from a file.
- */
+// Read a dictionary from a file.
 DICTIONARY *initialize_list(char *filename)
 {
     DICTIONARY *list;
@@ -2851,13 +2145,7 @@ DICTIONARY *initialize_list(char *filename)
     return(list);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Delay
- *
- *		Purpose:		Display the string to stdout as if it was typed by a human.
- */
+// Display the string to stdout as if it was typed by a human.
 void delay(char *string)
 {
     register int i;
@@ -2878,13 +2166,7 @@ void delay(char *string)
     typein(string[i]);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Typein
- *
- *		Purpose:		Display a character to stdout as if it was typed by a human.
- */
+// Display a character to stdout as if it was typed by a human.
 void typein(char c)
 {
     /*
@@ -2901,13 +2183,7 @@ void typein(char c)
         std::this_thread::sleep_for(std::chrono::microseconds(D_THINK+rnd(V_THINK)-rnd(V_THINK)));
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Ignore
- *
- *		Purpose:		Log the occurrence of a signal, but ignore it.
- */
+// Log the occurrence of a signal, but ignore it.
 void ignore(int sig)
 {
     if(sig!=0) warn("ignore", "MegaHAL received signal %d", sig);
@@ -2921,26 +2197,14 @@ void ignore(int sig)
 }
 
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Die
- *
- *		Purpose:		Log the occurrence of a signal, and exit.
- */
+// Log the occurrence of a signal, and exit.
 void die(int sig)
 {
     error("die", "MegaHAL received signal %d", sig);
-    exithal();
+    exit(0);
 }
 
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Rnd
- *
- *		Purpose:		Return a random integer between 0 and range-1.
- */
+// Return a random integer between 0 and range-1.
 int rnd(int range)
 {
     return rand() % range;
@@ -2964,183 +2228,7 @@ int rnd(int range)
 */
 }
 
-/*
- *		Function:	Strdup
- *
- *		Purpose:		Provide the strdup() function for Macintosh.
- */
-#ifdef __mac_os
-char *strdup(const char *str)
-{
-    char *rval=(char *)malloc(strlen(str)+1);
-
-    if(rval!=NULL) strcpy(rval, str);
-
-    return(rval);
-}
-#endif
-
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Initialize_Speech
- *
- *		Purpose:		Initialize speech output.
- */
-#ifdef __mac_os
-bool initialize_speech(void)
-{
-    bool speechExists = false;
-    long response;
-    OSErr err;
-
-    err = Gestalt(gestaltSpeechAttr, &response);
-
-    if(!err) {
-	if(response & (1L << gestaltSpeechMgrPresent)) {
-	    speechExists = true;
-	}
-    }
-    return speechExists;
-}
-#endif
-
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	changevoice
- *
- *		Purpose:		change voice of speech output.
- */
-void changevoice(DICTIONARY* words, int position)
-{
-#ifdef __mac_os
-    register int i, index;
-    STRING word={ 1, "#" };
-    char buffer[80];
-    VoiceSpec voiceSpec;
-    VoiceDescription info;
-    short count, voiceCount;
-    unsigned char* temp;
-    OSErr err;
-    /*
-     *		If there is less than 4 words, no voice specified.
-     */
-    if(words->size<=4) return;
-
-    for(i=0; i<words->size-4; ++i)
-	if(wordcmp(word, words->entry[i])==0) {
-
-	    err = CountVoices(&voiceCount);
-	    if (!err && voiceCount) {
-		for (count = 1; count <= voiceCount; count++) {
-		    err = GetIndVoice(count, &voiceSpec);
-		    if (err) continue;
-		    err = GetVoiceDescription(&voiceSpec, &info,
-					      sizeof(VoiceDescription));
-		    if (err) continue;
-
-
-		    for (temp= info.name; *temp; temp++) {
-			if (*temp == ' ')
-			    *temp = '_';
-		    }
-
-		    /*
-		     *		skip command and get voice name
-		     */
-		    index = i + 3;
-		    strcpy(buffer, words->entry[index].word);
-		    c2pstr(buffer);
-		    // compare ignoring case
-		    if (EqualString((StringPtr)buffer, info.name, false, false)) {
-			if (gSpeechChannel) {
-			    StopSpeech(gSpeechChannel);
-			    DisposeSpeechChannel(gSpeechChannel);
-			    gSpeechChannel = nil;
-			}
-			err = NewSpeechChannel(&voiceSpec, &gSpeechChannel);
-			if (!err) {
-			    p2cstr((StringPtr)buffer);
-			    printf("Now using %s voice\n", buffer);
-			    c2pstr(buffer);
-			    err = SpeakText(gSpeechChannel, &buffer[1], buffer[0]);
-			}
-		    }
-		}
-	    }
-	}
-#endif
-}
-
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	listvoices
- *
- *		Purpose:		Display the names of voices for speech output.
- */
-void listvoices(void)
-{
-#ifdef __mac_os
-    VoiceSpec voiceSpec;
-    VoiceDescription info;
-    short count, voiceCount;
-    unsigned char* temp;
-    OSErr err;
-
-    if(gSpeechExists) {
-	err = CountVoices(&voiceCount);
-	if (!err && voiceCount) {
-	    for (count = 1; count <= voiceCount; count++) {
-		err = GetIndVoice(count, &voiceSpec);
-		if (err) continue;
-
-		err = GetVoiceDescription(&voiceSpec, &info,
-					  sizeof(VoiceDescription));
-		if (err) continue;
-
-		p2cstr(info.name);
-		for (temp= info.name; *temp; temp++)
-		    if (*temp == ' ')
-			*temp = '_';
-		printf("%s\n",info.name);
-	    }
-	}
-    }
-#endif
-}
-
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Speak
- */
-void speak(char *output)
-{
-    if(speech==FALSE) return;
-#ifdef __mac_os
-    if(gSpeechExists) {
-	OSErr err;
-
-	if (gSpeechChannel)
-	    err = SpeakText(gSpeechChannel, output, strlen(output));
-	else {
-	    c2pstr(output);
-	    SpeakString((StringPtr)output);
-	    p2cstr((StringPtr)output);
-	}
-    }
-#endif
-}
-
-/*---------------------------------------------------------------------------*/
-
-/*
- *		Function:	Progress
- *
- *		Purpose:		Display a progress indicator as a percentage.
- */
+// Display a progress indicator as a percentage.
 bool progress(char *message, int done, int total)
 {
     static int last=0;
@@ -3184,8 +2272,6 @@ bool progress(char *message, int done, int total)
     return(TRUE);
 }
 
-/*---------------------------------------------------------------------------*/
-
 void help(void)
 {
     unsigned int j;
@@ -3194,8 +2280,6 @@ void help(void)
 	printf("#%-7s: %s\n", command[j].word.word, command[j].helpstring);
     }
 }
-
-/*---------------------------------------------------------------------------*/
 
 void load_personality(MODEL **model)
 {
@@ -3274,8 +2358,6 @@ void load_personality(MODEL **model)
     swp=initialize_swap(filename);
 }
 
-/*---------------------------------------------------------------------------*/
-
 void change_personality(DICTIONARY *command, unsigned int position, MODEL **model)
 {
 
@@ -3307,8 +2389,6 @@ void change_personality(DICTIONARY *command, unsigned int position, MODEL **mode
     load_personality(model);
 }
 
-/*---------------------------------------------------------------------------*/
-
 void free_words(DICTIONARY *words)
 {
     register unsigned int i;
@@ -3318,8 +2398,6 @@ void free_words(DICTIONARY *words)
     if(words->entry != NULL)
 	for(i=0; i<words->size; ++i) free_word(words->entry[i]);
 }
-
-/*---------------------------------------------------------------------------*/
 
 void free_word(STRING word)
 {
