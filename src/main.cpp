@@ -8,9 +8,11 @@ int main(int argc, char **argv)
 {    
     srand(time(NULL));
 
-    megahal_initialize(".");
+    MegaHal hal = MegaHal();
 
-    char* output = megahal_initial_greeting();
+    hal.load_personality(".");
+
+    char* output = hal.initial_greeting();
     printf(output);
     printf("\n");
 
@@ -22,13 +24,13 @@ int main(int argc, char **argv)
 	    if (command == "#quit")
 	        break;
 
-	    output = megahal_do_reply((char*)command.c_str());
+	    output = hal.do_reply((char*)command.c_str());
 
 	    printf(output);
 	    printf("\n");
     }
 
-    megahal_save_model("megahal.brn");
+    hal.save_model();
 
     return 0;
 }
