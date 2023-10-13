@@ -41,42 +41,35 @@
 
 #define COMMAND_SIZE (sizeof(command)/sizeof(command[0]))
 
-#define BYTE1 unsigned char
-#define BYTE2 unsigned short
-#define BYTE4 unsigned long
-
 #define SEP "/"
 
-#define TRUE true
-#define FALSE false
-
 typedef struct {
-    BYTE1 length;
+    uint8_t length;
     char *word;
 } STRING;
 
 typedef struct {
-    BYTE4 size;
+    uint32_t size;
     STRING *entry;
-    BYTE2 *index;
+    uint16_t *index;
 } DICTIONARY;
 
 typedef struct {
-    BYTE2 size;
+    uint16_t size;
     STRING *from;
     STRING *to;
 } SWAP;
 
 typedef struct NODE {
-    BYTE2 symbol;
-    BYTE4 usage;
-    BYTE2 count;
-    BYTE2 branch;
+    uint16_t symbol;
+    uint32_t usage;
+    uint16_t count;
+    uint16_t branch;
     struct NODE **tree;
 } TREE;
 
 typedef struct {
-    BYTE1 order;
+    uint8_t order;
     TREE *forward;
     TREE *backward;
     TREE **context;
@@ -96,11 +89,11 @@ typedef struct {
 static int width=75;
 static int order=5;
 
-static bool typing_delay=FALSE;
-static bool noprompt=FALSE;
-static bool quiet=FALSE;
-static bool nowrap=FALSE;
-static bool nobanner=FALSE;
+static bool typing_delay=false;
+static bool noprompt=false;
+static bool quiet=false;
+static bool nowrap=false;
+static bool nobanner=false;
 
 static char *errorfilename = "megahal.log";
 static char *statusfilename = "megahal.txt";
@@ -113,7 +106,6 @@ static FILE *statusfp;
 
 static DICTIONARY *ban=NULL;
 static DICTIONARY *aux=NULL;
-/*static DICTIONARY *fin=NULL; not used */
 static DICTIONARY *grt=NULL;
 static SWAP *swp=NULL;
 static bool used_key;
@@ -128,11 +120,6 @@ static COMMAND command[] = {
     { { 5, "BRAIN" }, "change to another MegaHAL personality", BRAIN },
     { { 4, "HELP" }, "displays this message", HELP },
     { { 5, "QUIET" }, "toggles MegaHAL's responses (on by default)",QUIET},
-    /*
-      { { 5, "STATS" }, "Display stats", STATS},
-      { { 5, "STATS-SESSION" }, "Display stats for this session only",STATS_SESSION},
-      { { 5, "STATS-ALL" },"Display stats for the whole lifetime",STATS-ALL},
-    */
 };
 
 /* FIXME - these need to be static  */
@@ -141,8 +128,8 @@ static void add_aux(MODEL *, DICTIONARY *, STRING);
 static void add_key(MODEL *, DICTIONARY *, STRING);
 static void add_node(TREE *, TREE *, int);
 static void add_swap(SWAP *, char *, char *);
-static TREE *add_symbol(TREE *, BYTE2);
-static BYTE2 add_word(DICTIONARY *, STRING);
+static TREE *add_symbol(TREE *, uint16_t);
+static uint16_t add_word(DICTIONARY *, STRING);
 static int babble(MODEL *, DICTIONARY *, DICTIONARY *);
 static bool boundary(char *, int);
 static void capitalize(char *);
@@ -155,7 +142,7 @@ static float evaluate_reply(MODEL *, DICTIONARY *, DICTIONARY *);
 static COMMAND_WORDS execute_command(DICTIONARY *, int *);
 static TREE *find_symbol(TREE *, int);
 static TREE *find_symbol_add(TREE *, int);
-static BYTE2 find_word(DICTIONARY *, STRING);
+static uint16_t find_word(DICTIONARY *, STRING);
 static char *generate_reply(MODEL *, DICTIONARY *);
 static void help(void);
 static void ignore(int);
@@ -216,17 +203,17 @@ static int rnd(int);
 // Purpose: Set noprompt variable.
 void megahal_setnoprompt(void)
 {
-    noprompt = TRUE;
+    noprompt = true;
 }
 
 void megahal_setnowrap (void)
 {
-    nowrap = TRUE;
+    nowrap = true;
 }
 
 void megahal_setnobanner (void)
 {
-    nobanner = TRUE;
+    nobanner = true;
 }
 
 void megahal_seterrorfile(char *filename)
@@ -425,12 +412,12 @@ bool initialize_error(char *filename)
 {
     if(errorfp!=stderr) fclose(errorfp);
 
-    if(filename==NULL) return(TRUE);
+    if(filename==NULL) return(true);
 
     errorfp = fopen(filename, "a");
     if(errorfp==NULL) {
 	errorfp=stderr;
-	return(FALSE);
+	return(false);
     }
     return(print_header(errorfp));
 }
@@ -465,18 +452,18 @@ bool warn(char *title, char *fmt, ...)
 
     fprintf(stderr, "MegaHAL emitted a warning; check the error log.\n");
 
-    return(TRUE);
+    return(true);
 }
 
 // Close the current status file pointer, and open a new one.
 bool initialize_status(char *filename)
 {
     if(statusfp!=stdout) fclose(statusfp);
-    if(filename==NULL) return(FALSE);
+    if(filename==NULL) return(false);
     statusfp=fopen(filename, "a");
     if(statusfp==NULL) {
 	statusfp=stdout;
-	return(FALSE);
+	return(false);
     }
     return(print_header(statusfp));
 }
@@ -491,7 +478,7 @@ bool status(char *fmt, ...)
     va_end(argp);
     fflush(statusfp);
 
-    return(TRUE);
+    return(true);
 }
 
 // Display a copyright message and timestamp.
@@ -510,7 +497,7 @@ bool print_header(FILE *file)
     fprintf(file, timestamp);
     fflush(file);
 
-    return(TRUE);
+    return(true);
 }
 
 // Display the output string.
@@ -539,16 +526,16 @@ void write_output(char *output)
 void capitalize(char *string)
 {
     register unsigned int i;
-    bool start=TRUE;
+    bool start=true;
 
     for(i=0; i<strlen(string); ++i) {
 	if(isalpha((unsigned char)string[i])) {
-	    if(start==TRUE) string[i]=(char)toupper((unsigned char)string[i]);
+	    if(start==true) string[i]=(char)toupper((unsigned char)string[i]);
 	    else string[i]=(char)tolower((unsigned char)string[i]);
-	    start=FALSE;
+	    start=false;
 	}
 	if((i>2)&&(strchr("!.?", string[i-1])!=NULL)&&(isspace((unsigned char)string[i])))
-	    start=TRUE;
+	    start=true;
     }
 }
 
@@ -624,7 +611,7 @@ static char *format_output(char *output)
 
 // Add a word to a dictionary, and return the identifierassigned to the word.If the word already
 // exists in the dictionary, then return its current identifier without adding it again.
-BYTE2 add_word(DICTIONARY *dictionary, STRING word)
+uint16_t add_word(DICTIONARY *dictionary, STRING word)
 {
     register int i;
     int position;
@@ -634,7 +621,7 @@ BYTE2 add_word(DICTIONARY *dictionary, STRING word)
      *		If the word's already in the dictionary, there is no need to add it
      */
     position=search_dictionary(dictionary, word, &found);
-    if(found==TRUE) goto succeed;
+    if(found==true) goto succeed;
 
     /*
      *		Increase the number of words in the dictionary
@@ -645,11 +632,11 @@ BYTE2 add_word(DICTIONARY *dictionary, STRING word)
      *		Allocate one more entry for the word index
      */
     if(dictionary->index==NULL) {
-	dictionary->index=(BYTE2 *)malloc(sizeof(BYTE2)*
+	dictionary->index=(uint16_t *)malloc(sizeof(uint16_t)*
 					  (dictionary->size));
     } else {
-	dictionary->index=(BYTE2 *)realloc((BYTE2 *)
-					   (dictionary->index),sizeof(BYTE2)*(dictionary->size));
+	dictionary->index=(uint16_t *)realloc((uint16_t *)
+					   (dictionary->index),sizeof(uint16_t)*(dictionary->size));
     }
     if(dictionary->index==NULL) {
 	error("add_word", "Unable to reallocate the index.");
@@ -728,7 +715,7 @@ int search_dictionary(DICTIONARY *dictionary, STRING word, bool *find)
      *		Search repeatedly, halving the search space each time, until either
      *		the entry is found, or the search space becomes empty
      */
-    while(TRUE) {
+    while(true) {
 	/*
 	 *		See whether the middle element of the search space is greater
 	 *		than, equal to, or less than the element being searched for.
@@ -758,24 +745,24 @@ int search_dictionary(DICTIONARY *dictionary, STRING word, bool *find)
     }
 
 found:
-    *find=TRUE;
+    *find=true;
     return(position);
 
 notfound:
-    *find=FALSE;
+    *find=false;
     return(position);
 }
 
 // Return the symbol corresponding to the word specified. We assume that the word with index zero
 // is equal to a NULL word, indicating an error condition.
-BYTE2 find_word(DICTIONARY *dictionary, STRING word)
+uint16_t find_word(DICTIONARY *dictionary, STRING word)
 {
     int position;
     bool found;
 
     position=search_dictionary(dictionary, word, &found);
 
-    if(found==TRUE) return(dictionary->index[position]);
+    if(found==true) return(dictionary->index[position]);
     else return(0);
 }
 
@@ -886,7 +873,7 @@ void save_dictionary(FILE *file, DICTIONARY *dictionary)
 {
     register unsigned int i;
 
-    fwrite(&(dictionary->size), sizeof(BYTE4), 1, file);
+    fwrite(&(dictionary->size), sizeof(uint32_t), 1, file);
     progress("Saving dictionary", 0, 1);
     for(i=0; i<dictionary->size; ++i) {
 	save_word(file, dictionary->entry[i]);
@@ -901,7 +888,7 @@ void load_dictionary(FILE *file, DICTIONARY *dictionary)
     register int i;
     int size;
 
-    fread(&size, sizeof(BYTE4), 1, file);
+    fread(&size, sizeof(uint32_t), 1, file);
     progress("Loading dictionary", 0, 1);
     for(i=0; i<size; ++i) {
 	load_word(file, dictionary);
@@ -915,7 +902,7 @@ void save_word(FILE *file, STRING word)
 {
     register unsigned int i;
 
-    fwrite(&(word.length), sizeof(BYTE1), 1, file);
+    fwrite(&(word.length), sizeof(uint8_t), 1, file);
     for(i=0; i<word.length; ++i)
 	fwrite(&(word.word[i]), sizeof(char), 1, file);
 }
@@ -926,7 +913,7 @@ void load_word(FILE *file, DICTIONARY *dictionary)
     register unsigned int i;
     STRING word;
 
-    fread(&(word.length), sizeof(BYTE1), 1, file);
+    fread(&(word.length), sizeof(uint8_t), 1, file);
     word.word=(char *)malloc(sizeof(char)*word.length);
     if(word.word==NULL) {
 	error("load_word", "Unable to allocate word");
@@ -1008,7 +995,7 @@ void update_model(MODEL *model, int symbol)
      */
     for(i=(model->order+1); i>0; --i)
 	if(model->context[i-1]!=NULL)
-	    model->context[i]=add_symbol(model->context[i-1], (BYTE2)symbol);
+	    model->context[i]=add_symbol(model->context[i-1], (uint16_t)symbol);
 
     return;
 }
@@ -1025,7 +1012,7 @@ void update_context(MODEL *model, int symbol)
 
 // Update the statistics of the specified tree with the specified symbol, which may mean
 // growing the tree if the symbol hasn't been seen in this context before.
-TREE *add_symbol(TREE *tree, BYTE2 symbol)
+TREE *add_symbol(TREE *tree, uint16_t symbol)
 {
     TREE *node=NULL;
 
@@ -1050,13 +1037,13 @@ TREE *find_symbol(TREE *node, int symbol)
 {
     register unsigned int i;
     TREE *found=NULL;
-    bool found_symbol=FALSE;
+    bool found_symbol=false;
 
     /*
      *		Perform a binary search for the symbol.
      */
     i=search_node(node, symbol, &found_symbol);
-    if(found_symbol==TRUE) found=node->tree[i];
+    if(found_symbol==true) found=node->tree[i];
 
     return(found);
 }
@@ -1067,14 +1054,14 @@ TREE *find_symbol_add(TREE *node, int symbol)
 {
     register unsigned int i;
     TREE *found=NULL;
-    bool found_symbol=FALSE;
+    bool found_symbol=false;
 
     /*
      *		Perform a binary search for the symbol.  If the symbol isn't found,
      *		attach a new sub-node to the tree node so that it remains sorted.
      */
     i=search_node(node, symbol, &found_symbol);
-    if(found_symbol==TRUE) {
+    if(found_symbol==true) {
 	found=node->tree[i];
     } else {
 	found=new_node();
@@ -1143,7 +1130,7 @@ int search_node(TREE *node, int symbol, bool *found_symbol)
      */
     min=0;
     max=node->branch-1;
-    while(TRUE) {
+    while(true) {
 	middle=(min+max)/2;
 	compar=symbol-node->tree[middle]->symbol;
 	if(compar==0) {
@@ -1165,11 +1152,11 @@ int search_node(TREE *node, int symbol, bool *found_symbol)
     }
 
 found:
-    *found_symbol=TRUE;
+    *found_symbol=true;
     return(position);
 
 notfound:
-    *found_symbol=FALSE;
+    *found_symbol=false;
     return(position);
 }
 
@@ -1186,7 +1173,7 @@ void learn(MODEL *model, DICTIONARY *words)
 {
     register unsigned int i;
     register int j;
-    BYTE2 symbol;
+    uint16_t symbol;
 
     /*
      *		We only learn from inputs which are long enough
@@ -1325,7 +1312,7 @@ void save_model(char *modelname, MODEL *model)
     }
 
     fwrite(COOKIE, sizeof(char), strlen(COOKIE), file);
-    fwrite(&(model->order), sizeof(BYTE1), 1, file);
+    fwrite(&(model->order), sizeof(uint8_t), 1, file);
     save_tree(file, model->forward);
     save_tree(file, model->backward);
     save_dictionary(file, model->dictionary);
@@ -1339,10 +1326,10 @@ void save_tree(FILE *file, TREE *node)
     static int level=0;
     register unsigned int i;
 
-    fwrite(&(node->symbol), sizeof(BYTE2), 1, file);
-    fwrite(&(node->usage), sizeof(BYTE4), 1, file);
-    fwrite(&(node->count), sizeof(BYTE2), 1, file);
-    fwrite(&(node->branch), sizeof(BYTE2), 1, file);
+    fwrite(&(node->symbol), sizeof(uint16_t), 1, file);
+    fwrite(&(node->usage), sizeof(uint32_t), 1, file);
+    fwrite(&(node->count), sizeof(uint16_t), 1, file);
+    fwrite(&(node->branch), sizeof(uint16_t), 1, file);
 
     if(level==0) progress("Saving tree", 0, 1);
     for(i=0; i<node->branch; ++i) {
@@ -1360,10 +1347,10 @@ void load_tree(FILE *file, TREE *node)
     static int level=0;
     register unsigned int i;
 
-    fread(&(node->symbol), sizeof(BYTE2), 1, file);
-    fread(&(node->usage), sizeof(BYTE4), 1, file);
-    fread(&(node->count), sizeof(BYTE2), 1, file);
-    fread(&(node->branch), sizeof(BYTE2), 1, file);
+    fread(&(node->symbol), sizeof(uint16_t), 1, file);
+    fread(&(node->usage), sizeof(uint32_t), 1, file);
+    fread(&(node->count), sizeof(uint16_t), 1, file);
+    fread(&(node->branch), sizeof(uint16_t), 1, file);
 
     if(node->branch==0) return;
 
@@ -1391,13 +1378,13 @@ bool load_model(char *filename, MODEL *model)
     char cookie[16];
 
 
-    if(filename==NULL) return(FALSE);
+    if(filename==NULL) return(false);
 
     file=fopen(filename, "rb");
 
     if(file==NULL) {
 	warn("load_model", "Unable to open file `%s'", filename);
-	return(FALSE);
+	return(false);
     }
 
 
@@ -1407,16 +1394,16 @@ bool load_model(char *filename, MODEL *model)
 	goto fail;
     }
 
-    fread(&(model->order), sizeof(BYTE1), 1, file);
+    fread(&(model->order), sizeof(uint8_t), 1, file);
     load_tree(file, model->forward);
     load_tree(file, model->backward);
     load_dictionary(file, model->dictionary);
 
-    return(TRUE);
+    return(true);
 fail:
     fclose(file);
 
-    return(FALSE);
+    return(false);
 }
 
 // Break a string into an array of words.
@@ -1500,17 +1487,17 @@ void make_words(char *input, DICTIONARY *words)
 bool boundary(char *string, int position)
 {
     if(position==0)
-	return(FALSE);
+	return(false);
 
     if(position==(int)strlen(string))
-	return(TRUE);
+	return(true);
 
     if(
 	(string[position]=='\'')&&
 	(isalpha((unsigned char)string[position-1])!=0)&&
 	(isalpha((unsigned char)string[position+1])!=0)
 	)
-	return(FALSE);
+	return(false);
 
     if(
 	(position>1)&&
@@ -1518,24 +1505,24 @@ bool boundary(char *string, int position)
 	(isalpha((unsigned char)string[position-2])!=0)&&
 	(isalpha((unsigned char)string[position])!=0)
 	)
-	return(FALSE);
+	return(false);
 
     if(
 	(isalpha((unsigned char)string[position])!=0)&&
 	(isalpha((unsigned char)string[position-1])==0)
 	)
-	return(TRUE);
+	return(true);
 
     if(
 	(isalpha((unsigned char)string[position])==0)&&
 	(isalpha((unsigned char)string[position-1])!=0)
 	)
-	return(TRUE);
+	return(true);
 
     if(isdigit((unsigned char)string[position])!=isdigit((unsigned char)string[position-1]))
-	return(TRUE);
+	return(true);
 
-    return(FALSE);
+    return(false);
 }
 
 // Put some special words into the dictionary so that the program will respond as if to a new judge.
@@ -1579,7 +1566,7 @@ char *generate_reply(MODEL *model, DICTIONARY *words)
     output=output_none;
     if(dummy == NULL) dummy = new_dictionary();
     replywords = reply(model, dummy);
-    if(dissimilar(words, replywords) == TRUE) output = make_output(replywords);
+    if(dissimilar(words, replywords) == true) output = make_output(replywords);
 
     /*
      *		Loop for the specified waiting period, generating and evaluating
@@ -1593,7 +1580,7 @@ char *generate_reply(MODEL *model, DICTIONARY *words)
 	replywords=reply(model, keywords);
 	surprise=evaluate_reply(model, keywords, replywords);
 	++count;
-	if((surprise>max_surprise)&&(dissimilar(words, replywords)==TRUE)) {
+	if((surprise>max_surprise)&&(dissimilar(words, replywords)==true)) {
 	    max_surprise=surprise;
 	    output=make_output(replywords);
 	}
@@ -1607,15 +1594,15 @@ char *generate_reply(MODEL *model, DICTIONARY *words)
     return(output);
 }
 
-// Return TRUE or FALSE depending on whether the dictionaries are the same or not.
+// Return true or false depending on whether the dictionaries are the same or not.
 bool dissimilar(DICTIONARY *words1, DICTIONARY *words2)
 {
     register unsigned int i;
 
-    if(words1->size!=words2->size) return(TRUE);
+    if(words1->size!=words2->size) return(true);
     for(i=0; i<words1->size; ++i)
-	if(wordcmp(words1->entry[i], words2->entry[i])!=0) return(TRUE);
-    return(FALSE);
+	if(wordcmp(words1->entry[i], words2->entry[i])!=0) return(true);
+    return(false);
 }
 
 // Put all the interesting words from the user's input into a keywords dictionary,
@@ -1697,7 +1684,7 @@ DICTIONARY *reply(MODEL *model, DICTIONARY *keys)
     static DICTIONARY *replies=NULL;
     register int i;
     int symbol;
-    bool start=TRUE;
+    bool start=true;
 
     if(replies==NULL) replies=new_dictionary();
     free_dictionary(replies);
@@ -1707,19 +1694,19 @@ DICTIONARY *reply(MODEL *model, DICTIONARY *keys)
      */
     initialize_context(model);
     model->context[0]=model->forward;
-    used_key=FALSE;
+    used_key=false;
 
     /*
      *		Generate the reply in the forward direction.
      */
-    while(TRUE) {
+    while(true) {
 	/*
 	 *		Get a random symbol from the current context.
 	 */
-	if(start==TRUE) symbol=seed(model, keys);
+	if(start==true) symbol=seed(model, keys);
 	else symbol=babble(model, keys, replies);
 	if((symbol==0)||(symbol==1)) break;
-	start=FALSE;
+	start=false;
 
 	/*
 	 *		Append the symbol to the reply dictionary.
@@ -1764,7 +1751,7 @@ DICTIONARY *reply(MODEL *model, DICTIONARY *keys)
     /*
      *		Generate the reply in the backward direction.
      */
-    while(TRUE) {
+    while(true) {
 	/*
 	 *		Get a random symbol from the current context.
 	 */
@@ -1953,11 +1940,11 @@ int babble(MODEL *model, DICTIONARY *keys, DICTIONARY *words)
 
 	if(
 	    (find_word(keys, model->dictionary->entry[symbol])!=0)&&
-	    ((used_key==TRUE)||
+	    ((used_key==true)||
 	     (find_word(aux, model->dictionary->entry[symbol])==0))&&
-	    (word_exists(words, model->dictionary->entry[symbol])==FALSE)
+	    (word_exists(words, model->dictionary->entry[symbol])==false)
 	    ) {
-	    used_key=TRUE;
+	    used_key=true;
 	    break;
 	}
 	count-=node->tree[i]->count;
@@ -1974,8 +1961,8 @@ bool word_exists(DICTIONARY *dictionary, STRING word)
 
     for(i=0; i<dictionary->size; ++i)
 	if(wordcmp(dictionary->entry[i], word)==0)
-	    return(TRUE);
-    return(FALSE);
+	    return(true);
+    return(false);
 }
 
 // Seed the reply by guaranteeing that it contains a keyword, if one exists.
@@ -1994,7 +1981,7 @@ int seed(MODEL *model, DICTIONARY *keys)
     if(keys->size>0) {
 	i=rnd(keys->size);
 	stop=i;
-	while(TRUE) {
+	while(true) {
 	    if(
 		(find_word(model->dictionary, keys->entry[i])!=0)&&
 		(find_word(aux, keys->entry[i])==0)
@@ -2153,7 +2140,7 @@ void delay(char *string)
     /*
      *		Don't simulate typing if the feature is turned off
      */
-    if(typing_delay==FALSE)	{
+    if(typing_delay==false)	{
 	fprintf(stdout, string);
 	return;
     }
@@ -2210,16 +2197,16 @@ int rnd(int range)
     return rand() % range;
     
     /*
-    static bool flag=FALSE;
+    static bool flag=false;
     
-    if(flag==FALSE) {
+    if(flag==false) {
 #if defined(__mac_os) || defined(DOS)
 	srand(time(NULL));
 #else
 	srand48(time(NULL));
 #endif
     }
-    flag=TRUE;
+    flag=true;
 #if defined(__mac_os) || defined(DOS)
     return(rand()%range);
 #else
@@ -2232,24 +2219,24 @@ int rnd(int range)
 bool progress(char *message, int done, int total)
 {
     static int last=0;
-    static bool first=FALSE;
+    static bool first=false;
 
     /*
      *    We have already hit 100%, and a newline has been printed, so nothing
      *    needs to be done.
      */
-    if((done*100/total==100)&&(first==FALSE)) return(TRUE);
+    if((done*100/total==100)&&(first==false)) return(true);
 
     /*
      *    Nothing has changed since the last time this function was called,
      *    so do nothing, unless it's the first time!
      */
     if(done*100/total==last) {
-	if((done==0)&&(first==FALSE)) {
+	if((done==0)&&(first==false)) {
 	    fprintf(stderr, "%s: %3d%%", message, done*100/total);
-	    first=TRUE;
+	    first=true;
 	}
-	return(TRUE);
+	return(true);
     }
 
     /*
@@ -2264,12 +2251,12 @@ bool progress(char *message, int done, int total)
      *    We have hit 100%, so reset static variables and print a newline.
      */
     if(last==100) {
-	first=FALSE;
+	first=false;
 	last=0;
 	fprintf(stderr, "\n");
     }
 
-    return(TRUE);
+    return(true);
 }
 
 void help(void)
@@ -2339,7 +2326,7 @@ void load_personality(MODEL **model)
      */
 
     sprintf(filename, "%s%smegahal.brn", directory, SEP);
-    if(load_model(filename, *model)==FALSE) {
+    if(load_model(filename, *model)==false) {
 	sprintf(filename, "%s%smegahal.trn", directory, SEP);
 	train(*model, filename);
     }
