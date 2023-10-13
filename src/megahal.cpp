@@ -34,135 +34,37 @@ using namespace std;
 #define COOKIE "MegaHALv8"
 #define TIMEOUT 1
 
-typedef struct {
-    uint8_t length;
-    char* word;
-} HAL_STRING;
-
-typedef struct {
-    uint32_t size;
-    HAL_STRING* entry;
-    uint16_t* index;
-} HAL_DICTIONARY;
-
-typedef struct NODE {
-    uint16_t symbol;
-    uint32_t usage;
-    uint16_t count;
-    uint16_t branch;
-    struct NODE** tree;
-} HAL_TREE;
-
-typedef struct {
-    uint8_t order;
-    HAL_TREE* forward;
-    HAL_TREE* backward;
-    HAL_TREE** context;
-    HAL_DICTIONARY* dictionary;
-} HAL_MODEL;
-
-typedef struct {
-    uint16_t size;
-    HAL_STRING *from;
-    HAL_STRING *to;
-} SWAP;
-
-/*===========================================================================*/
-
-static int order=5;
-
-static HAL_DICTIONARY *words=NULL;
-static HAL_DICTIONARY *greets=NULL;
-static HAL_MODEL *model=NULL;
-
-static HAL_DICTIONARY *ban=NULL;
-static HAL_DICTIONARY *aux=NULL;
-static HAL_DICTIONARY *grt=NULL;
-static SWAP *swp=NULL;
-static bool used_key;
-static char *last=NULL;
-
-/* FIXME - these need to be static  */
-
-static void add_aux(HAL_MODEL *, HAL_DICTIONARY *, HAL_STRING);
-static void add_key(HAL_MODEL *, HAL_DICTIONARY *, HAL_STRING);
-static void add_node(HAL_TREE *, HAL_TREE *, int);
-static void add_swap(SWAP *, char *, char *);
-static HAL_TREE *add_symbol(HAL_TREE *, uint16_t);
-static uint16_t add_word(HAL_DICTIONARY *, HAL_STRING);
-static int babble(HAL_MODEL *, HAL_DICTIONARY *, HAL_DICTIONARY *);
-static bool boundary(char *, int);
-static void capitalize(char *);
-static bool dissimilar(HAL_DICTIONARY *, HAL_DICTIONARY *);
-static void error(char *, char *, ...);
-static float evaluate_reply(HAL_MODEL *, HAL_DICTIONARY *, HAL_DICTIONARY *);
-static HAL_TREE *find_symbol(HAL_TREE *, int);
-static HAL_TREE *find_symbol_add(HAL_TREE *, int);
-static uint16_t find_word(HAL_DICTIONARY *, HAL_STRING);
-static char *generate_reply(HAL_MODEL *, HAL_DICTIONARY *);
-static void learn(HAL_MODEL *, HAL_DICTIONARY *);
-static void make_greeting(HAL_DICTIONARY *);
-static void make_words(char *, HAL_DICTIONARY *);
-static HAL_DICTIONARY *new_dictionary(void);
-
-static void upper(char *);
-
-static void free_dictionary(HAL_DICTIONARY *);
-static void free_model(HAL_MODEL *);
-static void free_tree(HAL_TREE *);
-static void free_word(HAL_STRING);
-static void free_words(HAL_DICTIONARY *);
-static void initialize_context(HAL_MODEL *);
-static void initialize_dictionary(HAL_DICTIONARY *);
-static HAL_DICTIONARY *initialize_list(const char *);
-static SWAP *initialize_swap(const char *);
-static void load_dictionary(FILE *, HAL_DICTIONARY *);
-static bool load_model(const char *, HAL_MODEL *);
-static void load_personality(const char* brnpath, const char* trnpath, const char* banpath,
-        const char* auxpath, const char* grtpath, const char* swppath, HAL_MODEL** model);
-static void load_tree(FILE *, HAL_TREE *);
-static void load_word(FILE *, HAL_DICTIONARY *);
-static HAL_DICTIONARY *make_keywords(HAL_MODEL *, HAL_DICTIONARY *);
-static char *make_output(HAL_DICTIONARY *);
-static HAL_MODEL *new_model(int);
-static HAL_TREE *new_node(void);
-static SWAP *new_swap(void);
-static HAL_DICTIONARY *reply(HAL_MODEL *, HAL_DICTIONARY *);
-static void save_dictionary(FILE *, HAL_DICTIONARY *);
-static void save_tree(FILE *, HAL_TREE *);
-static void save_word(FILE *, HAL_STRING);
-static int search_dictionary(HAL_DICTIONARY *, HAL_STRING, bool *);
-static int search_node(HAL_TREE *, int, bool *);
-static int seed(HAL_MODEL *, HAL_DICTIONARY *);
-static void show_dictionary(HAL_DICTIONARY *);
-static void train(HAL_MODEL *, const char *);
-static void update_context(HAL_MODEL *, int);
-static void update_model(HAL_MODEL *, int);
-static bool warn(char *, char *, ...);
-static int wordcmp(HAL_STRING, HAL_STRING);
-static bool word_exists(HAL_DICTIONARY *, HAL_STRING);
-static int rnd(int);
-
-
-// Initialize various brains and files.
-void megahal_initialize(const char* directory)
+void MegaHal::load_personality(const char* directory)
 {
+    FILE* file;
+
+    brnpath = string(directory) + "/megahal.brn";
+    trnpath = string(directory) + "/megahal.trn";
+    banpath = string(directory) + "/megahal.ban";
+    auxpath = string(directory) + "/megahal.aux";
+    grtpath = string(directory) + "/megahal.grt";
+    swppath = string(directory) + "/megahal.swp";
+
+    fprintf(stdout, "Changing to MegaHAL personality \"%s\".\n", directory);
+    free_everything();
+
     words = new_dictionary();
     greets = new_dictionary();
 
-    string brnpath = string(directory) + "/megahal.brn";
-    string trnpath = string(directory) + "/megahal.trn";
-    string banpath = string(directory) + "/megahal.ban";
-    string auxpath = string(directory) + "/megahal.aux";
-    string grtpath = string(directory) + "/megahal.grt";
-    string swppath = string(directory) + "/megahal.swp";
+    model = new_model(order);
 
-    load_personality(brnpath.c_str(), trnpath.c_str(), banpath.c_str(), auxpath.c_str(), grtpath.c_str(), swppath.c_str(), &model);
+    if (load_model(brnpath.c_str(), model) == false) {
+        train(model, trnpath.c_str());
+    }
+
+    // Read a dictionary containing banned keywords, auxiliary keywords, greeting keywords and swap keywords
+    ban = initialize_list(banpath.c_str());
+    aux = initialize_list(auxpath.c_str());
+    grt = initialize_list(grtpath.c_str());
+    swp = initialize_swap(swppath.c_str());
 }
 
-// Take string as input, and return allocated string as output.  The
-// user is responsible for freeing this memory.
-char *megahal_do_reply(char *input)
+char* MegaHal::do_reply(char *input)
 {
     char *output = NULL;
 
@@ -176,8 +78,7 @@ char *megahal_do_reply(char *input)
     return output;
 }
 
-// Take string as input, update model but don't generate reply.
-void megahal_learn_no_reply(char *input)
+void MegaHal::learn_no_reply(char *input)
 {
     upper(input);
 
@@ -186,9 +87,7 @@ void megahal_learn_no_reply(char *input)
     learn(model, words);
 }
 
-// This function returns an initial greeting.  It can be used to start
-// Megahal conversations, but it isn't necessary.
-char *megahal_initial_greeting(void)
+char* MegaHal::initial_greeting(void)
 {
     char *output;
 
@@ -198,13 +97,41 @@ char *megahal_initial_greeting(void)
     return output;
 }
 
+void MegaHal::save_model()
+{
+    FILE* file;
+
+    if (brnpath.size() == 0) {
+        printf("Can't save hal model. Not initialized.");
+        return;
+    }
+
+    file = fopen(brnpath.c_str(), "wb");
+    if (file == NULL) {
+        warn("save_model", "Unable to open file '%s'", brnpath.c_str());
+        return;
+    }
+
+    fwrite(COOKIE, sizeof(char), strlen(COOKIE), file);
+    fwrite(&(model->order), sizeof(uint8_t), 1, file);
+    save_tree(file, model->forward);
+    save_tree(file, model->backward);
+    save_dictionary(file, model->dictionary);
+
+    fclose(file);
+}
+
+MegaHal::~MegaHal() {
+    free_everything();
+}
+
 
 //
 // Private functions
 //
 
 // Print the specified message to the error file.
-void error(char *title, char *fmt, ...)
+void MegaHal::error(char *title, char *fmt, ...)
 {
     va_list argptr;
     static char string[1024];
@@ -218,7 +145,7 @@ void error(char *title, char *fmt, ...)
     exit(1);
 }
 
-bool warn(char *title, char *fmt, ...)
+bool MegaHal::warn(char *title, char *fmt, ...)
 {
     va_list argptr;
     static char string[1024];
@@ -232,27 +159,8 @@ bool warn(char *title, char *fmt, ...)
     return(true);
 }
 
-// Display a copyright message and timestamp.
-bool print_header(FILE *file)
-{
-    time_t clock;
-    char timestamp[1024];
-    struct tm *local;
-
-    clock=time(NULL);
-    local=localtime(&clock);
-    strftime(timestamp, 1024, "Start at: [%Y/%m/%d %H:%M:%S]\n", local);
-
-    fprintf(file, "MegaHALv8\n");
-    fprintf(file, "Copyright (C) 1998 Jason Hutchens\n");
-    fprintf(file, timestamp);
-    fflush(file);
-
-    return(true);
-}
-
 // Convert a string to look nice.
-void capitalize(char *string)
+void MegaHal::capitalize(char *string)
 {
     register unsigned int i;
     bool start=true;
@@ -269,7 +177,7 @@ void capitalize(char *string)
 }
 
 // Convert a string to its uppercase representation.
-void upper(char *string)
+void MegaHal::upper(char *string)
 {
     register unsigned int i;
 
@@ -278,7 +186,7 @@ void upper(char *string)
 
 // Add a word to a dictionary, and return the identifierassigned to the word.If the word already
 // exists in the dictionary, then return its current identifier without adding it again.
-uint16_t add_word(HAL_DICTIONARY *dictionary, HAL_STRING word)
+uint16_t MegaHal::add_word(HAL_DICTIONARY *dictionary, HAL_STRING word)
 {
     register int i;
     int position;
@@ -357,7 +265,7 @@ fail:
 
 // Search the dictionary for the specified word, returning its position in the index if found, 
 // or the position where it should be inserted otherwise.
-int search_dictionary(HAL_DICTIONARY *dictionary, HAL_STRING word, bool *find)
+int MegaHal::search_dictionary(HAL_DICTIONARY *dictionary, HAL_STRING word, bool *find)
 {
     int position;
     int min;
@@ -422,7 +330,7 @@ notfound:
 
 // Return the symbol corresponding to the word specified. We assume that the word with index zero
 // is equal to a NULL word, indicating an error condition.
-uint16_t find_word(HAL_DICTIONARY *dictionary, HAL_STRING word)
+uint16_t MegaHal::find_word(HAL_DICTIONARY *dictionary, HAL_STRING word)
 {
     int position;
     bool found;
@@ -435,7 +343,7 @@ uint16_t find_word(HAL_DICTIONARY *dictionary, HAL_STRING word)
 
 // Compare two words, and return an integer indicating whether the first word is less than,
 // equal to or greater than the second word
-int wordcmp(HAL_STRING word1, HAL_STRING word2)
+int MegaHal::wordcmp(HAL_STRING word1, HAL_STRING word2)
 {
     register int i;
     int bound;
@@ -453,7 +361,7 @@ int wordcmp(HAL_STRING word1, HAL_STRING word2)
 }
 
 // Release the memory consumed by the dictionary.
-void free_dictionary(HAL_DICTIONARY *dictionary)
+void MegaHal::free_dictionary(HAL_DICTIONARY *dictionary)
 {
     if(dictionary==NULL) return;
     if(dictionary->entry!=NULL) {
@@ -467,7 +375,23 @@ void free_dictionary(HAL_DICTIONARY *dictionary)
     dictionary->size=0;
 }
 
-void free_model(HAL_MODEL *model)
+void MegaHal::free_everything() {
+    free_model(model);
+    free_words(ban);
+    free_dictionary(ban);
+    free_words(aux);
+    free_dictionary(aux);
+    free_words(grt);
+    free_dictionary(grt);
+    free_swap(swp);
+
+    free_words(words);
+    free_dictionary(words);
+    free_words(greets);
+    free_dictionary(grt);
+}
+
+void MegaHal::free_model(HAL_MODEL *model)
 {
     if(model==NULL) return;
     if(model->forward!=NULL) {
@@ -486,7 +410,7 @@ void free_model(HAL_MODEL *model)
     free(model);
 }
 
-void free_tree(HAL_TREE *tree)
+void MegaHal::free_tree(HAL_TREE *tree)
 {
     register unsigned int i;
 
@@ -502,7 +426,7 @@ void free_tree(HAL_TREE *tree)
 }
 
 // Add dummy words to the dictionary.
-void initialize_dictionary(HAL_DICTIONARY *dictionary)
+void MegaHal::initialize_dictionary(HAL_DICTIONARY *dictionary)
 {
     HAL_STRING word={ 7, "<ERROR>" };
     HAL_STRING end={ 5, "<FIN>" };
@@ -512,7 +436,7 @@ void initialize_dictionary(HAL_DICTIONARY *dictionary)
 }
 
 // Allocate room for a new dictionary.
-HAL_DICTIONARY *new_dictionary(void)
+HAL_DICTIONARY* MegaHal::new_dictionary(void)
 {
     HAL_DICTIONARY *dictionary=NULL;
 
@@ -530,7 +454,7 @@ HAL_DICTIONARY *new_dictionary(void)
 }
 
 // Save a dictionary to the specified file.
-void save_dictionary(FILE *file, HAL_DICTIONARY *dictionary)
+void MegaHal::save_dictionary(FILE *file, HAL_DICTIONARY *dictionary)
 {
     register unsigned int i;
 
@@ -542,7 +466,7 @@ void save_dictionary(FILE *file, HAL_DICTIONARY *dictionary)
 }
 
 // Load a dictionary from the specified file.
-void load_dictionary(FILE *file, HAL_DICTIONARY *dictionary)
+void MegaHal::load_dictionary(FILE *file, HAL_DICTIONARY *dictionary)
 {
     register int i;
     int size;
@@ -555,7 +479,7 @@ void load_dictionary(FILE *file, HAL_DICTIONARY *dictionary)
 }
 
 // Save a dictionary word to a file.
-void save_word(FILE *file, HAL_STRING word)
+void MegaHal::save_word(FILE *file, HAL_STRING word)
 {
     register unsigned int i;
 
@@ -565,7 +489,7 @@ void save_word(FILE *file, HAL_STRING word)
 }
 
 // Load a dictionary word from a file.
-void load_word(FILE *file, HAL_DICTIONARY *dictionary)
+void MegaHal::load_word(FILE *file, HAL_DICTIONARY *dictionary)
 {
     register unsigned int i;
     HAL_STRING word;
@@ -583,7 +507,7 @@ void load_word(FILE *file, HAL_DICTIONARY *dictionary)
 }
 
 // Allocate a new node for the n-gram tree, and initialise its contents to sensible values.
-HAL_TREE *new_node(void)
+HAL_TREE* MegaHal::new_node(void)
 {
     HAL_TREE *node=NULL;
 
@@ -613,7 +537,7 @@ fail:
 }
 
 // Create and initialise a new ngram model.
-HAL_MODEL *new_model(int order)
+HAL_MODEL* MegaHal::new_model(int order)
 {
     HAL_MODEL *model=NULL;
 
@@ -642,7 +566,7 @@ fail:
 }
 
 // Update the model with the specified symbol.
-void update_model(HAL_MODEL *model, int symbol)
+void MegaHal::update_model(HAL_MODEL *model, int symbol)
 {
     register unsigned int i;
 
@@ -658,7 +582,7 @@ void update_model(HAL_MODEL *model, int symbol)
 }
 
 // Update the context of the model without adding the symbol.
-void update_context(HAL_MODEL *model, int symbol)
+void MegaHal::update_context(HAL_MODEL *model, int symbol)
 {
     register unsigned int i;
 
@@ -669,7 +593,7 @@ void update_context(HAL_MODEL *model, int symbol)
 
 // Update the statistics of the specified tree with the specified symbol, which may mean
 // growing the tree if the symbol hasn't been seen in this context before.
-HAL_TREE *add_symbol(HAL_TREE *tree, uint16_t symbol)
+HAL_TREE* MegaHal::add_symbol(HAL_TREE *tree, uint16_t symbol)
 {
     HAL_TREE *node=NULL;
 
@@ -690,7 +614,7 @@ HAL_TREE *add_symbol(HAL_TREE *tree, uint16_t symbol)
 }
 
 // Return a pointer to the child node, if one exists, which contains the specified symbol.
-HAL_TREE *find_symbol(HAL_TREE *node, int symbol)
+HAL_TREE* MegaHal::find_symbol(HAL_TREE *node, int symbol)
 {
     register unsigned int i;
     HAL_TREE *found=NULL;
@@ -707,7 +631,7 @@ HAL_TREE *find_symbol(HAL_TREE *node, int symbol)
 
 // This function is conceptually similar to find_symbol, apart from the fact that if th
 // symbol is not found, a new node is automatically allocatedand added to the tree.
-HAL_TREE *find_symbol_add(HAL_TREE *node, int symbol)
+HAL_TREE* MegaHal::find_symbol_add(HAL_TREE *node, int symbol)
 {
     register unsigned int i;
     HAL_TREE *found=NULL;
@@ -730,7 +654,7 @@ HAL_TREE *find_symbol_add(HAL_TREE *node, int symbol)
 }
 
 // Attach a new child node to the sub-tree of the tree specified.
-void add_node(HAL_TREE *tree, HAL_TREE *node, int position)
+void MegaHal::add_node(HAL_TREE *tree, HAL_TREE *node, int position)
 {
     register int i;
 
@@ -766,7 +690,7 @@ void add_node(HAL_TREE *tree, HAL_TREE *node, int position)
 // Perform a binary search for the specified symbol on the subtree of the given node.
 // Return the position of the child node in the subtree if the symbol was found, or the
 // position where it should be inserted to keep the subtree sorted if it wasn't.
-int search_node(HAL_TREE *node, int symbol, bool *found_symbol)
+int MegaHal::search_node(HAL_TREE *node, int symbol, bool *found_symbol)
 {
     register unsigned int position;
     int min;
@@ -818,7 +742,7 @@ notfound:
 }
 
 // Set the context of the model to a default value.
-void initialize_context(HAL_MODEL *model)
+void MegaHal::initialize_context(HAL_MODEL *model)
 {
     register unsigned int i;
 
@@ -826,7 +750,7 @@ void initialize_context(HAL_MODEL *model)
 }
 
 // Learn from the user's input.
-void learn(HAL_MODEL *model, HAL_DICTIONARY *words)
+void MegaHal::learn(HAL_MODEL *model, HAL_DICTIONARY *words)
 {
     register unsigned int i;
     register int j;
@@ -879,7 +803,7 @@ void learn(HAL_MODEL *model, HAL_DICTIONARY *words)
 }
 
 // Infer a MegaHAL brain from the contents of a text file.
-void train(HAL_MODEL *model, const char *filename)
+void MegaHal::train(HAL_MODEL *model, const char *filename)
 {
     FILE *file;
     char buffer[1024];
@@ -918,7 +842,7 @@ void train(HAL_MODEL *model, const char *filename)
 }
 
 // Display the dictionary for training purposes.
-void show_dictionary(HAL_DICTIONARY *dictionary)
+void MegaHal::show_dictionary(HAL_DICTIONARY *dictionary)
 {
     register unsigned int i;
     register unsigned int j;
@@ -939,28 +863,8 @@ void show_dictionary(HAL_DICTIONARY *dictionary)
     fclose(file);
 }
 
-// Save the current state to a MegaHAL brain file.
-void megahal_save_model(char *modelpath)
-{
-    FILE *file;
-
-    file=fopen(modelpath, "wb");
-    if(file==NULL) {
-	    warn("save_model", "Unable to open file '%s'", modelpath);
-	    return;
-    }
-
-    fwrite(COOKIE, sizeof(char), strlen(COOKIE), file);
-    fwrite(&(model->order), sizeof(uint8_t), 1, file);
-    save_tree(file, model->forward);
-    save_tree(file, model->backward);
-    save_dictionary(file, model->dictionary);
-
-    fclose(file);
-}
-
 // Save a tree structure to the specified file.
-void save_tree(FILE *file, HAL_TREE *node)
+void MegaHal::save_tree(FILE *file, HAL_TREE *node)
 {
     static int level=0;
     register unsigned int i;
@@ -978,7 +882,7 @@ void save_tree(FILE *file, HAL_TREE *node)
 }
 
 // Load a tree structure from the specified file.
-void load_tree(FILE *file, HAL_TREE *node)
+void MegaHal::load_tree(FILE *file, HAL_TREE *node)
 {
     register unsigned int i;
 
@@ -1002,7 +906,7 @@ void load_tree(FILE *file, HAL_TREE *node)
 }
 
 // Load a model into memory.
-bool load_model(const char *filename, HAL_MODEL *model)
+bool MegaHal::load_model(const char *filename, HAL_MODEL *model)
 {
     FILE *file;
     char cookie[16];
@@ -1037,7 +941,7 @@ fail:
 }
 
 // Break a string into an array of words.
-void make_words(char *input, HAL_DICTIONARY *words)
+void MegaHal::make_words(char *input, HAL_DICTIONARY *words)
 {
     int offset=0;
 
@@ -1114,7 +1018,7 @@ void make_words(char *input, HAL_DICTIONARY *words)
 }
 
 // Return whether or not a word boundary exists in a string at the specified location.
-bool boundary(char *string, int position)
+bool MegaHal::boundary(char *string, int position)
 {
     if(position==0)
 	return(false);
@@ -1156,7 +1060,7 @@ bool boundary(char *string, int position)
 }
 
 // Put some special words into the dictionary so that the program will respond as if to a new judge.
-void make_greeting(HAL_DICTIONARY *words)
+void MegaHal::make_greeting(HAL_DICTIONARY *words)
 {
     register unsigned int i;
 
@@ -1167,17 +1071,13 @@ void make_greeting(HAL_DICTIONARY *words)
 
 // Take a string of user input and return a string of output which may vaguely be construed
 // as containing a reply to whatever is in the input string.
-char *generate_reply(HAL_MODEL *model, HAL_DICTIONARY *words)
+char* MegaHal::generate_reply(HAL_MODEL *model, HAL_DICTIONARY *words)
 {
     static HAL_DICTIONARY *dummy=NULL;
     HAL_DICTIONARY *replywords;
     HAL_DICTIONARY *keywords;
     float surprise;
     float max_surprise;
-    char *output;
-    static char *output_none=NULL;
-    int count;
-    int basetime;
     int timeout = TIMEOUT;
 
     /*
@@ -1188,43 +1088,47 @@ char *generate_reply(HAL_MODEL *model, HAL_DICTIONARY *words)
     /*
      *		Make sure some sort of reply exists
      */
-    if(output_none==NULL) {
-	output_none=(char*)malloc(40);
-	if(output_none!=NULL)
-	    strcpy(output_none, "I don't know enough to answer you yet!");
-    }
-    output=output_none;
+    snprintf(replyBuffer, HAL_MAX_REPLY_LEN, "I don't know enough to answer you yet!");
+    replyBuffer[HAL_MAX_REPLY_LEN-1] = '\0';
+
     if(dummy == NULL) dummy = new_dictionary();
     replywords = reply(model, dummy);
-    if(dissimilar(words, replywords) == true) output = make_output(replywords);
+    if(dissimilar(words, replywords) == true) make_output(replywords);
 
     /*
      *		Loop for the specified waiting period, generating and evaluating
      *		replies
      */
     max_surprise=(float)-1.0;
-    count=0;
-    basetime=time(NULL);
-/*     progress("Generating reply", 0, 1);  */
-    do {
-	replywords=reply(model, keywords);
-	surprise=evaluate_reply(model, keywords, replywords);
-	++count;
-	if((surprise>max_surprise)&&(dissimilar(words, replywords)==true)) {
-	    max_surprise=surprise;
-	    output=make_output(replywords);
-	}
-/*  	progress(NULL, (time(NULL)-basetime),timeout); */
-    } while((time(NULL)-basetime)<timeout);
+    
+    for (int i = 0; i < reply_iterations; i++) {
+	    replywords=reply(model, keywords);
+	    surprise=evaluate_reply(model, keywords, replywords);
+
+        int length = 1;
+        for (int k = 0; k < replywords->size; ++k)
+            length += replywords->entry[k].length;
+
+        if (length >= HAL_MAX_REPLY_LEN) {
+            printf("[MegaHal] max reply length exceeded %d > %d)\n", length, HAL_MAX_REPLY_LEN);
+            continue;
+        }
+
+	    if ((surprise>max_surprise) && (dissimilar(words, replywords)==true)) {
+	        max_surprise=surprise;
+	        make_output(replywords);
+            //printf("%d / %d - %s\n", i, reply_iterations, replyBuffer);
+	    }
+    }
 
     /*
      *		Return the best answer we generated
      */
-    return(output);
+    return replyBuffer;
 }
 
 // Return true or false depending on whether the dictionaries are the same or not.
-bool dissimilar(HAL_DICTIONARY *words1, HAL_DICTIONARY *words2)
+bool MegaHal::dissimilar(HAL_DICTIONARY *words1, HAL_DICTIONARY *words2)
 {
     register unsigned int i;
 
@@ -1236,7 +1140,7 @@ bool dissimilar(HAL_DICTIONARY *words1, HAL_DICTIONARY *words2)
 
 // Put all the interesting words from the user's input into a keywords dictionary,
 // which will be used when generating a reply.
-HAL_DICTIONARY *make_keywords(HAL_MODEL *model, HAL_DICTIONARY *words)
+HAL_DICTIONARY* MegaHal::make_keywords(HAL_MODEL *model, HAL_DICTIONARY *words)
 {
     static HAL_DICTIONARY *keys=NULL;
     register unsigned int i;
@@ -1278,7 +1182,7 @@ HAL_DICTIONARY *make_keywords(HAL_MODEL *model, HAL_DICTIONARY *words)
 }
 
 // Add a word to the keyword dictionary.
-void add_key(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_STRING word)
+void MegaHal::add_key(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_STRING word)
 {
     int symbol;
 
@@ -1294,7 +1198,7 @@ void add_key(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_STRING word)
 }
 
 // Add an auxilliary keyword to the keyword dictionary.
-void add_aux(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_STRING word)
+void MegaHal::add_aux(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_STRING word)
 {
     int symbol;
 
@@ -1308,7 +1212,7 @@ void add_aux(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_STRING word)
 }
 
 // Generate a dictionary of reply words appropriate to the given dictionary of keywords.
-HAL_DICTIONARY *reply(HAL_MODEL *model, HAL_DICTIONARY *keys)
+HAL_DICTIONARY* MegaHal::reply(HAL_MODEL *model, HAL_DICTIONARY *keys)
 {
     static HAL_DICTIONARY *replies=NULL;
     register int i;
@@ -1421,7 +1325,7 @@ HAL_DICTIONARY *reply(HAL_MODEL *model, HAL_DICTIONARY *keys)
 }
 
 // Measure the average surprise of keywords relative to the language model.
-float evaluate_reply(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_DICTIONARY *words)
+float MegaHal::evaluate_reply(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_DICTIONARY *words)
 {
     register unsigned int i;
     register int j;
@@ -1489,7 +1393,7 @@ float evaluate_reply(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_DICTIONARY *wor
 }
 
 // Generate a string from the dictionary of reply words.
-char *make_output(HAL_DICTIONARY *words)
+char* MegaHal::make_output(HAL_DICTIONARY *words)
 {
     static char *output=NULL;
     register unsigned int i;
@@ -1497,47 +1401,38 @@ char *make_output(HAL_DICTIONARY *words)
     int length;
     static char *output_none=NULL;
 
-    if(output_none==NULL) output_none= (char*)malloc(40);
-
-    if(output==NULL) {
-	output=(char *)malloc(sizeof(char));
-	if(output==NULL) {
-	    error("make_output", "Unable to allocate output");
-	    return(output_none);
-	}
+    if(words->size == 0) {
+        snprintf(replyBuffer, HAL_MAX_REPLY_LEN, "I am utterly speechless!");
+        replyBuffer[HAL_MAX_REPLY_LEN-1] = '\0';
+        return replyBuffer;
     }
 
-    if(words->size==0) {
-	if(output_none!=NULL)
-	    strcpy(output_none, "I am utterly speechless!");
-	return(output_none);
+    length = 1;
+    for(i = 0; i < words->size; ++i)
+        length += words->entry[i].length;
+
+    if (length >= HAL_MAX_REPLY_LEN) {
+        snprintf(replyBuffer, HAL_MAX_REPLY_LEN, "HAL_MAX_REPLY_LEN exceeded!");
+        replyBuffer[HAL_MAX_REPLY_LEN-1] = '\0';
+        return replyBuffer;
     }
 
-    length=1;
-    for(i=0; i<words->size; ++i) length+=words->entry[i].length;
-
-    output=(char *)realloc(output, sizeof(char)*length);
-    if(output==NULL) {
-	error("make_output", "Unable to reallocate output.");
-	if(output_none!=NULL)
-	    strcpy(output_none, "I forgot what I was going to say!");
-	return(output_none);
+    length = 0;
+    for (i = 0; i < words->size; ++i) {
+        for (j = 0; j < words->entry[i].length; ++j) {
+            replyBuffer[length++] = words->entry[i].word[j];
+        }
     }
 
-    length=0;
-    for(i=0; i<words->size; ++i)
-	for(j=0; j<words->entry[i].length; ++j)
-	    output[length++]=words->entry[i].word[j];
+    replyBuffer[length] = '\0';
 
-    output[length]='\0';
-
-    return(output);
+    return replyBuffer;
 }
 
 // Return a random symbol from the current context, or a zero symbol identifier if we've 
 // reached either the start or end of the sentence.Select the symbol based on probabilities,
 // favouring keywords. In all cases, use the longest available context to choose the symbol.
-int babble(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_DICTIONARY *words)
+int MegaHal::babble(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_DICTIONARY *words)
 {
     HAL_TREE *node;
     register int i;
@@ -1584,7 +1479,7 @@ int babble(HAL_MODEL *model, HAL_DICTIONARY *keys, HAL_DICTIONARY *words)
 }
 
 // A silly brute-force searcher for the reply string.
-bool word_exists(HAL_DICTIONARY *dictionary, HAL_STRING word)
+bool MegaHal::word_exists(HAL_DICTIONARY *dictionary, HAL_STRING word)
 {
     register unsigned int i;
 
@@ -1595,7 +1490,7 @@ bool word_exists(HAL_DICTIONARY *dictionary, HAL_STRING word)
 }
 
 // Seed the reply by guaranteeing that it contains a keyword, if one exists.
-int seed(HAL_MODEL *model, HAL_DICTIONARY *keys)
+int MegaHal::seed(HAL_MODEL *model, HAL_DICTIONARY *keys)
 {
     register unsigned int i;
     int symbol;
@@ -1628,11 +1523,11 @@ int seed(HAL_MODEL *model, HAL_DICTIONARY *keys)
 }
 
 // Allocate a new swap structure.
-SWAP *new_swap(void)
+HAL_SWAP* MegaHal::new_swap(void)
 {
-    SWAP *list;
+    HAL_SWAP *list;
 
-    list=(SWAP *)malloc(sizeof(SWAP));
+    list=(HAL_SWAP *)malloc(sizeof(HAL_SWAP));
     if(list==NULL) {
 	error("new_swap", "Unable to allocate swap");
 	return(NULL);
@@ -1645,7 +1540,7 @@ SWAP *new_swap(void)
 }
 
 // Add a new entry to the swap structure.
-void add_swap(SWAP *list, char *s, char *d)
+void MegaHal::add_swap(HAL_SWAP *list, char *s, char *d)
 {
     list->size+=1;
 
@@ -1684,9 +1579,9 @@ void add_swap(SWAP *list, char *s, char *d)
 }
 
 // Read a swap structure from a file.
-SWAP *initialize_swap(const char *filename)
+HAL_SWAP* MegaHal::initialize_swap(const char *filename)
 {
-    SWAP *list;
+    HAL_SWAP *list;
     FILE *file=NULL;
     char buffer[1024];
     char *from;
@@ -1713,7 +1608,7 @@ SWAP *initialize_swap(const char *filename)
     return(list);
 }
 
-void free_swap(SWAP *swap)
+void MegaHal::free_swap(HAL_SWAP *swap)
 {
     register int i;
 
@@ -1729,7 +1624,7 @@ void free_swap(SWAP *swap)
 }
 
 // Read a dictionary from a file.
-HAL_DICTIONARY *initialize_list(const char *filename)
+HAL_DICTIONARY* MegaHal::initialize_list(const char *filename)
 {
     HAL_DICTIONARY *list;
     FILE *file=NULL;
@@ -1762,76 +1657,12 @@ HAL_DICTIONARY *initialize_list(const char *filename)
 }
 
 // Return a random integer between 0 and range-1.
-int rnd(int range)
+int MegaHal::rnd(int range)
 {
     return rand() % range;
-    
-    /*
-    static bool flag=false;
-    
-    if(flag==false) {
-#if defined(__mac_os) || defined(DOS)
-	srand(time(NULL));
-#else
-	srand48(time(NULL));
-#endif
-    }
-    flag=true;
-#if defined(__mac_os) || defined(DOS)
-    return(rand()%range);
-#else
-    return(floor(drand48()*(double)(range)));
-#endif
-*/
 }
 
-void load_personality(const char* brnpath, const char* trnpath, const char* banpath,
-    const char* auxpath, const char* grtpath, const char* swppath, HAL_MODEL** model)
-{
-    FILE *file;
-
-    /*
-     *		Check to see if the brain exists
-     */
-
-	fprintf(stdout, "Changing to MegaHAL personality \"%s\".\n", brnpath);
-
-    /*
-     *		Free the current personality
-     */
-    free_model(*model);
-    free_words(ban);
-    free_dictionary(ban);
-    free_words(aux);
-    free_dictionary(aux);
-    free_words(grt);
-    free_dictionary(grt);
-    free_swap(swp);
-
-    /*
-     *		Create a language model.
-     */
-    *model=new_model(order);
-
-    /*
-     *		Train the model on a text if one exists
-     */
-
-    if(load_model(brnpath, *model) == false) {
-	    train(*model, trnpath);
-    }
-
-    /*
-     *		Read a dictionary containing banned keywords, auxiliary keywords,
-     *		greeting keywords and swap keywords
-     */
-    ban=initialize_list(banpath);
-    aux=initialize_list(auxpath);
-    grt=initialize_list(grtpath);
-    swp=initialize_swap(swppath);
-}
-
-void free_words(HAL_DICTIONARY *words)
+void MegaHal::free_words(HAL_DICTIONARY *words)
 {
     register unsigned int i;
 
@@ -1841,7 +1672,7 @@ void free_words(HAL_DICTIONARY *words)
 	for(i=0; i<words->size; ++i) free_word(words->entry[i]);
 }
 
-void free_word(HAL_STRING word)
+void MegaHal::free_word(HAL_STRING word)
 {
     free(word.word);
 }
