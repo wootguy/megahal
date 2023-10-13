@@ -45,7 +45,6 @@ void MegaHal::load_personality(const char* directory)
     grtpath = string(directory) + "/megahal.grt";
     swppath = string(directory) + "/megahal.swp";
 
-    fprintf(stdout, "Changing to MegaHAL personality \"%s\".\n", directory);
     free_everything();
 
     words = new_dictionary();
@@ -66,15 +65,17 @@ void MegaHal::load_personality(const char* directory)
 
 char* MegaHal::do_reply(char *input)
 {
+    char* inputCopy = strdup(input);
     char *output = NULL;
 
-    upper(input);
+    upper(inputCopy);
 
-    make_words(input, words);
+    make_words(inputCopy, words);
 
     learn(model, words);
     output = generate_reply(model, words);
     capitalize(output);
+    free(inputCopy);
     return output;
 }
 
@@ -125,10 +126,30 @@ MegaHal::~MegaHal() {
     free_everything();
 }
 
-
 //
 // Private functions
 //
+
+void MegaHal::free_everything() {
+    free_model(model);
+    free_words(ban);
+    free_dictionary(ban);
+    free(ban);
+    free_words(aux);
+    free_dictionary(aux);
+    free(aux);
+    free_words(grt);
+    free_dictionary(grt);
+    free(grt);
+    free_swap(swp);
+
+    //free_words(words); // word data points to memory handled by calling funcs
+    free_dictionary(words);
+    free(words);
+    free_words(greets);
+    free_dictionary(greets);
+    free(greets);
+}
 
 // Print the specified message to the error file.
 void MegaHal::error(char *title, char *fmt, ...)
@@ -181,7 +202,8 @@ void MegaHal::upper(char *string)
 {
     register unsigned int i;
 
-    for(i=0; i<strlen(string); ++i) string[i]=(char)toupper((int)string[i]);
+    for(i=0; i<strlen(string); ++i)
+        string[i] = (char)toupper((unsigned char)string[i]);
 }
 
 // Add a word to a dictionary, and return the identifierassigned to the word.If the word already
@@ -363,49 +385,35 @@ int MegaHal::wordcmp(HAL_STRING word1, HAL_STRING word2)
 // Release the memory consumed by the dictionary.
 void MegaHal::free_dictionary(HAL_DICTIONARY *dictionary)
 {
-    if(dictionary==NULL) return;
+    if(dictionary==NULL)
+        return;
     if(dictionary->entry!=NULL) {
-	free(dictionary->entry);
-	dictionary->entry=NULL;
+	    free(dictionary->entry);
+	    dictionary->entry=NULL;
     }
     if(dictionary->index!=NULL) {
-	free(dictionary->index);
-	dictionary->index=NULL;
+	    free(dictionary->index);
+	    dictionary->index=NULL;
     }
     dictionary->size=0;
-}
-
-void MegaHal::free_everything() {
-    free_model(model);
-    free_words(ban);
-    free_dictionary(ban);
-    free_words(aux);
-    free_dictionary(aux);
-    free_words(grt);
-    free_dictionary(grt);
-    free_swap(swp);
-
-    free_words(words);
-    free_dictionary(words);
-    free_words(greets);
-    free_dictionary(grt);
 }
 
 void MegaHal::free_model(HAL_MODEL *model)
 {
     if(model==NULL) return;
     if(model->forward!=NULL) {
-	free_tree(model->forward);
+	    free_tree(model->forward);
     }
     if(model->backward!=NULL) {
-	free_tree(model->backward);
+	    free_tree(model->backward);
     }
     if(model->context!=NULL) {
-	free(model->context);
+	    free(model->context);
     }
     if(model->dictionary!=NULL) {
-	free_dictionary(model->dictionary);
-	free(model->dictionary);
+	    free_words(model->dictionary);
+	    free_dictionary(model->dictionary);
+        free(model->dictionary);
     }
     free(model);
 }
@@ -442,8 +450,8 @@ HAL_DICTIONARY* MegaHal::new_dictionary(void)
 
     dictionary=(HAL_DICTIONARY *)malloc(sizeof(HAL_DICTIONARY));
     if(dictionary==NULL) {
-	error("new_dictionary", "Unable to allocate dictionary.");
-	return(NULL);
+	    error("new_dictionary", "Unable to allocate dictionary.");
+	    return(NULL);
     }
 
     dictionary->size=0;
@@ -543,17 +551,18 @@ HAL_MODEL* MegaHal::new_model(int order)
 
     model=(HAL_MODEL *)malloc(sizeof(HAL_MODEL));
     if(model==NULL) {
-	error("new_model", "Unable to allocate model.");
-	goto fail;
+	    error("new_model", "Unable to allocate model.");
+	    goto fail;
     }
+    memset(model, 0, sizeof(HAL_MODEL));
 
     model->order=order;
     model->forward=new_node();
     model->backward=new_node();
     model->context=(HAL_TREE **)malloc(sizeof(HAL_TREE *)*(order+2));
     if(model->context==NULL) {
-	error("new_model", "Unable to allocate context array.");
-	goto fail;
+	    error("new_model", "Unable to allocate context array.");
+	    goto fail;
     }
     initialize_context(model);
     model->dictionary=new_dictionary();
@@ -911,33 +920,29 @@ bool MegaHal::load_model(const char *filename, HAL_MODEL *model)
     FILE *file;
     char cookie[16];
 
-
     if(filename==NULL) return(false);
 
     file=fopen(filename, "rb");
 
     if(file==NULL) {
-	warn("load_model", "Unable to open file `%s'", filename);
-	return(false);
+	    warn("load_model", "Unable to open file `%s'", filename);
+	    return(false);
     }
 
-
     fread(cookie, sizeof(char), strlen(COOKIE), file);
-    if(strncmp(cookie, COOKIE, strlen(COOKIE))!=0) {
-	warn("load_model", "File `%s' is not a MegaHAL brain", filename);
-	goto fail;
+    if(strncmp(cookie, COOKIE, strlen(COOKIE)) != 0) {
+	    warn("load_model", "File `%s' is not a MegaHAL brain", filename);
+        fclose(file);
+        return false;
     }
 
     fread(&(model->order), sizeof(uint8_t), 1, file);
     load_tree(file, model->forward);
     load_tree(file, model->backward);
     load_dictionary(file, model->dictionary);
-
-    return(true);
-fail:
     fclose(file);
 
-    return(false);
+    return(true);
 }
 
 // Break a string into an array of words.
@@ -1064,21 +1069,23 @@ void MegaHal::make_greeting(HAL_DICTIONARY *words)
 {
     register unsigned int i;
 
-    for(i=0; i<words->size; ++i) free(words->entry[i].word);
+    for(i=0; i<words->size; ++i)
+        free(words->entry[i].word);
+
     free_dictionary(words);
-    if(grt->size>0) (void)add_word(words, grt->entry[rnd(grt->size)]);
+
+    if(grt->size>0)
+        add_word(words, grt->entry[rnd(grt->size)]);
 }
 
 // Take a string of user input and return a string of output which may vaguely be construed
 // as containing a reply to whatever is in the input string.
 char* MegaHal::generate_reply(HAL_MODEL *model, HAL_DICTIONARY *words)
 {
-    static HAL_DICTIONARY *dummy=NULL;
     HAL_DICTIONARY *replywords;
     HAL_DICTIONARY *keywords;
     float surprise;
     float max_surprise;
-    int timeout = TIMEOUT;
 
     /*
      *		Create an array of keywords from the words in the user's input
@@ -1091,15 +1098,11 @@ char* MegaHal::generate_reply(HAL_MODEL *model, HAL_DICTIONARY *words)
     snprintf(replyBuffer, HAL_MAX_REPLY_LEN, "I don't know enough to answer you yet!");
     replyBuffer[HAL_MAX_REPLY_LEN-1] = '\0';
 
-    if(dummy == NULL) dummy = new_dictionary();
-    replywords = reply(model, dummy);
-    if(dissimilar(words, replywords) == true) make_output(replywords);
-
     /*
      *		Loop for the specified waiting period, generating and evaluating
      *		replies
      */
-    max_surprise=(float)-1.0;
+    max_surprise = -1.0f;
     
     for (int i = 0; i < reply_iterations; i++) {
 	    replywords=reply(model, keywords);
@@ -1615,8 +1618,8 @@ void MegaHal::free_swap(HAL_SWAP *swap)
     if(swap==NULL) return;
 
     for(i=0; i<swap->size; ++i) {
-	free_word(swap->from[i]);
-	free_word(swap->to[i]);
+	    free_word(swap->from[i]);
+	    free_word(swap->to[i]);
     }
     free(swap->from);
     free(swap->to);
@@ -1640,16 +1643,18 @@ HAL_DICTIONARY* MegaHal::initialize_list(const char *filename)
     if(file==NULL) return(list);
 
     while(!feof(file)) {
+	    if(fgets(buffer, 1024, file)==NULL)
+            break;
+	    if(buffer[0]=='#')
+            continue;
+	    string=strtok(buffer, "\t \n#");
 
-	if(fgets(buffer, 1024, file)==NULL) break;
-	if(buffer[0]=='#') continue;
-	string=strtok(buffer, "\t \n#");
-
-	if((string!=NULL)&&(strlen(string)>0)) {
-	    word.length=strlen(string);
-	    word.word=strdup(buffer);
-	    add_word(list, word);
-	}
+	    if((string!=NULL) && (strlen(string)>0)) {
+	        word.length=strlen(string);
+	        word.word=strdup(buffer);
+            add_word(list, word);
+            free(word.word);
+	    }
     }
 
     fclose(file);
@@ -1664,12 +1669,12 @@ int MegaHal::rnd(int range)
 
 void MegaHal::free_words(HAL_DICTIONARY *words)
 {
-    register unsigned int i;
-
-    if(words == NULL) return;
+    if(words == NULL)
+        return;
 
     if(words->entry != NULL)
-	for(i=0; i<words->size; ++i) free_word(words->entry[i]);
+	    for(int i = 0; i < words->size; ++i)
+            free_word(words->entry[i]);
 }
 
 void MegaHal::free_word(HAL_STRING word)
