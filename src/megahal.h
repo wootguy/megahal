@@ -56,18 +56,15 @@ struct HAL_SWAP {
 };
 
 // UTF-8 characters can be up to 4-bytes long
-#define HAL_MAX_REPLY_LEN (256*4)
+#define HAL_MAX_REPLY_LEN (1024*4)
 
 class MegaHal {
 public:
     ~MegaHal();
 
     // Initialize various brains and files.
-    void load_personality(const char* directory);
-
-    // This function returns an initial greeting.  It can be used to start
-    // Megahal conversations, but it isn't necessary.
-	char* initial_greeting(void);
+    // path = file path to a .brn file without the .brn extension
+    void load_personality(const char* path);
 
     // Take string as input, and return allocated string as output.
     // string memory belongs to the class
@@ -89,21 +86,17 @@ private:
     char replyBuffer[HAL_MAX_REPLY_LEN];
 
     HAL_DICTIONARY* words = NULL;
-    HAL_DICTIONARY* greets = NULL;
     HAL_MODEL* model = NULL;
 
     HAL_DICTIONARY* ban = NULL;
     HAL_DICTIONARY* aux = NULL;
-    HAL_DICTIONARY* grt = NULL;
     HAL_SWAP* swp = NULL;
     bool used_key = false;
-    char* last = NULL;
 
 	std::string brnpath;
     std::string trnpath;
     std::string banpath;
     std::string auxpath;
-    std::string grtpath;
     std::string swppath;
 
     void add_aux(HAL_MODEL*, HAL_DICTIONARY*, HAL_STRING);
@@ -123,7 +116,6 @@ private:
     uint16_t find_word(HAL_DICTIONARY*, HAL_STRING);
     char* generate_reply(HAL_MODEL*, HAL_DICTIONARY*);
     void learn(HAL_MODEL*, HAL_DICTIONARY*);
-    void make_greeting(HAL_DICTIONARY*);
     void make_words(char*, HAL_DICTIONARY*);
     HAL_DICTIONARY* new_dictionary(void);
 
