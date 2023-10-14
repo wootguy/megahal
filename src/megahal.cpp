@@ -79,6 +79,7 @@ void MegaHal::load_personality(const char* path)
 
     if (load_model(brnpath.c_str(), model) == false) {
         train(trnpath.c_str());
+        save_model();
     }
 }
 
@@ -970,6 +971,8 @@ void MegaHal::make_words(char *input, HAL_DICTIONARY *words)
      */
     if(strlen(input)==0) return;
 
+    
+
     /*
      *		Loop forever.
      */
@@ -980,6 +983,7 @@ void MegaHal::make_words(char *input, HAL_DICTIONARY *words)
 	 *		character, then include it in the word.  Otherwise, terminate
 	 *		the current word.
 	 */
+
 	if(boundary(input, offset)) {
 	    /*
 	     *		Add the word to the dictionary
@@ -1010,7 +1014,7 @@ void MegaHal::make_words(char *input, HAL_DICTIONARY *words)
      *		If the last word isn't punctuation, then replace it with a
      *		full-stop character.
      */
-    if(isalnum((unsigned char)words->entry[words->size-1].word[0])) {
+    if(isWordChar((unsigned char)words->entry[words->size-1].word[0])) {
 	if(words->entry==NULL)
 	    words->entry=(HAL_STRING *)malloc((words->size+1)*sizeof(HAL_STRING));
 	else
@@ -1036,40 +1040,19 @@ void MegaHal::make_words(char *input, HAL_DICTIONARY *words)
 bool MegaHal::boundary(char *string, int position)
 {
     if(position==0)
-	return(false);
+	    return(false);
 
     if(position==(int)strlen(string))
-	return(true);
+	    return(true);
 
-    if(
-	(string[position]=='\'')&&
-	(isalpha((unsigned char)string[position-1])!=0)&&
-	(isalpha((unsigned char)string[position+1])!=0)
-	)
-	return(false);
+    if(isWordSep(string[position]) && isWordChar(string[position-1]) && isWordChar(string[position+1]))
+	    return(false);
 
-    if(
-	(position>1)&&
-	(string[position-1]=='\'')&&
-	(isalpha((unsigned char)string[position-2])!=0)&&
-	(isalpha((unsigned char)string[position])!=0)
-	)
-	return(false);
+    if(position>1 && isWordSep(string[position-1]) && isWordChar(string[position-2]) && isWordChar(string[position]))
+	    return(false);
 
-    if(
-	(isalpha((unsigned char)string[position])!=0)&&
-	(isalpha((unsigned char)string[position-1])==0)
-	)
-	return(true);
-
-    if(
-	(isalpha((unsigned char)string[position])==0)&&
-	(isalpha((unsigned char)string[position-1])!=0)
-	)
-	return(true);
-
-    if(isdigit((unsigned char)string[position])!=isdigit((unsigned char)string[position-1]))
-	return(true);
+    if (isWordChar(string[position]) != isWordChar(string[position - 1]))
+	    return(true);
 
     return(false);
 }
@@ -1681,4 +1664,12 @@ void MegaHal::free_words(HAL_DICTIONARY *words)
 void MegaHal::free_word(HAL_STRING word)
 {
     free(word.word);
+}
+
+bool MegaHal::isWordChar(uint8_t c) {
+    return c && strchr("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789$#@%", c) != NULL;
+}
+
+bool MegaHal::isWordSep(uint8_t c) {
+    return c && strchr("-/&'.", c) != NULL;
 }

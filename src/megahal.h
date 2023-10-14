@@ -70,6 +70,7 @@ public:
     // Initialize various brains and files.
     // brn/trn/ban/aux/swp files with the path prefix will be loaded if they exist,
     // otherwise the fallback paths will be used (HAL_COMMON_*).
+    // A .brn file will be created if none exists and a .trn was used.
     // path = file path to a .brn file without the .brn extension.
     void load_personality(const char* path);
 
@@ -93,8 +94,9 @@ private:
     int order = 5;
 
     // increase for more "surprising" replies.
-    // 32768 is a slow but sane max, most improvements are made below 256 iterations
-    int reply_iterations = 256;
+    // 32768 is a slow but sane max, most improvements are made below 256 iterations.
+    // a low count of iterations seems to prevent the same messages being repeated with a large data set.
+    int reply_iterations = 16;
 
     char replyBuffer[HAL_MAX_REPLY_LEN];
 
@@ -163,5 +165,7 @@ private:
     bool word_exists(HAL_DICTIONARY*, HAL_STRING);
     int rnd(int);
 
+    bool isWordChar(uint8_t c); // is this character part of a word? TODO: unicode support
+    bool isWordSep(uint8_t c); // is this character a compound word separator? ("co-op", "something.com")
     void free_everything();
 };
