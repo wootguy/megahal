@@ -34,16 +34,37 @@ using namespace std;
 #define COOKIE "MegaHALv8"
 #define TIMEOUT 1
 
+static bool file_exists(const char* path) {
+    FILE* file = fopen(path, "r");
+    if (file == NULL) {
+        return false;
+    }
+    fclose(file);
+    return true;
+}
+
 void MegaHal::load_personality(const char* path)
 {
     FILE* file;
 
     brnpath = string(path) + ".brn";
-    trnpath = string(path) + ".trn";
+    string trnpath = string(path) + ".trn";
+    string banpath = string(path) + ".ban";
+    string auxpath = string(path) + ".aux";
+    string swppath = string(path) + ".swp";
 
-    banpath = string(path) + ".ban";
-    auxpath = string(path) + ".aux";
-    swppath = string(path) + ".swp";
+    if (!file_exists(trnpath.c_str())) {
+        trnpath = HAL_COMMON_TRN;
+    }
+    if (!file_exists(banpath.c_str())) {
+        banpath = HAL_COMMON_BAN;
+    }
+    if (!file_exists(auxpath.c_str())) {
+        auxpath = HAL_COMMON_AUX;
+    }
+    if (!file_exists(swppath.c_str())) {
+        swppath = HAL_COMMON_SWP;
+    }
 
     free_everything();
 
@@ -57,11 +78,11 @@ void MegaHal::load_personality(const char* path)
     swp = initialize_swap(swppath.c_str());
 
     if (load_model(brnpath.c_str(), model) == false) {
-        train(model, trnpath.c_str());
+        train(trnpath.c_str());
     }
 }
 
-char* MegaHal::do_reply(char *input)
+char* MegaHal::do_reply(char *input, bool learnFromInput)
 {
     char* inputCopy = strdup(input);
     char *output = NULL;
@@ -70,7 +91,8 @@ char* MegaHal::do_reply(char *input)
 
     make_words(inputCopy, words);
 
-    learn(model, words);
+    if (learnFromInput)
+        learn(model, words);
     output = generate_reply(model, words);
     capitalize(output);
     free(inputCopy);
@@ -80,9 +102,7 @@ char* MegaHal::do_reply(char *input)
 void MegaHal::learn_no_reply(char *input)
 {
     upper(input);
-
     make_words(input, words);
-
     learn(model, words);
 }
 
@@ -131,6 +151,12 @@ void MegaHal::free_everything() {
     //free_words(words); // word data points to memory handled by calling funcs
     free_dictionary(words);
     free(words);
+
+    model = NULL;
+    ban = NULL;
+    aux = NULL;
+    swp = NULL;
+    words = NULL;
 }
 
 // Print the specified message to the error file.
@@ -145,7 +171,7 @@ void MegaHal::error(char *title, char *fmt, ...)
 
     fprintf(stderr, "MegaHAL died. %s: %s \n", title, string);
 
-    exit(1);
+    free_everything();
 }
 
 bool MegaHal::warn(char *title, char *fmt, ...)
@@ -462,7 +488,6 @@ void MegaHal::load_dictionary(FILE *file, HAL_DICTIONARY *dictionary)
     int size;
 
     fread(&size, sizeof(uint32_t), 1, file);
-    printf("Loading dictionary\n", 0, 1);
     for(i=0; i<size; ++i) {
 	load_word(file, dictionary);
     }
@@ -794,19 +819,20 @@ void MegaHal::learn(HAL_MODEL *model, HAL_DICTIONARY *words)
 }
 
 // Infer a MegaHAL brain from the contents of a text file.
-void MegaHal::train(HAL_MODEL *model, const char *filename)
+void MegaHal::train(const char *filename)
 {
     FILE *file;
     char buffer[1024];
     HAL_DICTIONARY *words=NULL;
     int length;
 
-    if(filename==NULL) return;
+    if(filename==NULL)
+        return;
 
     file=fopen(filename, "r");
     if(file==NULL) {
-	printf("Unable to find the personality %s\n", filename);
-	return;
+	    printf("Unable to find the personality %s\n", filename);
+	    return;
     }
 
     fseek(file, 0, 2);
@@ -815,17 +841,19 @@ void MegaHal::train(HAL_MODEL *model, const char *filename)
 
     words=new_dictionary();
 
-    printf("Training from file\n", 0, 1);
+    printf("Training from file\n");
     while(!feof(file)) {
+	    if(fgets(buffer, 1024, file)==NULL)
+            break;
 
-	if(fgets(buffer, 1024, file)==NULL) break;
-	if(buffer[0]=='#') continue;
+	    if(buffer[0]=='#')
+            continue;
 
-	buffer[strlen(buffer)-1]='\0';
+	    buffer[strlen(buffer)-1]='\0';
 
-	upper(buffer);
-	make_words(buffer, words);
-	learn(model, words);
+	    upper(buffer);
+	    make_words(buffer, words);
+	    learn(model, words);
     }
 
     free_dictionary(words);
@@ -833,16 +861,16 @@ void MegaHal::train(HAL_MODEL *model, const char *filename)
 }
 
 // Display the dictionary for training purposes.
-void MegaHal::show_dictionary(HAL_DICTIONARY *dictionary)
+void MegaHal::write_dictionary()
 {
     register unsigned int i;
     register unsigned int j;
     FILE *file;
+    HAL_DICTIONARY* dictionary = model->dictionary;
 
     file=fopen("megahal.dic", "w");
     if(file==NULL) {
-	warn("show_dictionary", "Unable to open file");
-	return;
+	    return;
     }
 
     for(i=0; i<dictionary->size; ++i) {
