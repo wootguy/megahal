@@ -1,0 +1,220 @@
+# This file contains some text for training the bot's brain
+# if it doesn't have a brain yet.
+############################################################
+# hand-crafted sentences designed in order to create a personality 
+# for megahal, including sentences containing a false name, age and 
+# occupation. 
+a bot is a computer controlled player
+a player is an entity in the game
+a game is not real
+Half-life is a game
+a computer is a machine
+a machine can learn 
+bots rule
+to rule means to have power
+ruling means having power
+power can be used for good or bad
+power is also electricity
+being fine is okay
+being great is a lot better
+better is good
+hello is a greeting
+greeting is a way of welcoming someone
+someone is a person
+greetings
+hello
+hi
+###############
+# text taken from #svencoop irc :D
+I wonder when Sven will get *driveable Apaches*
+that would RULE
+play dc coop
+BEST COOP MOD EVAH
+No commas in map names
+:P
+dc coop?
+you mean desertcrisis?
+no
+Dodo-clan coop
+roffles
+lol
+you mean fgtcoop
+BobCoop
+SvenCoop is better
+JohnCoop roffle
+I'd say it takes two guys to drive Apache
+one to fly, one to shoot
+like desert combat
+thats 1337 dewd!
+oh yea!
+a map where you get an Apache in order to fight Black Ops Osprey
+but limit the ammo
+oh you get to fly apaches in dcc :p
+but I don't care what you can do in DCC
+since it is not Sven
+;-)
+oh you get to fly apaches in dcc :p < i smell mega lag in maps
+I'd also like to see a monster remote control
+where you get to take over a Garg
+mh i can make one
+and operate him like a vehicle
+oh hell yea it'll be laggy
+mh..
+i can try it :D
+:-)
+with a little luck its in the next version of puchikos playhouse
+that would be funneh
+:D
+driveable Garg
+with those flamethrowers
+no, you stay outside and control it
+*beep beep*
+watching the enemy grunts flee (on fire)
+lol
+like the secret game in svencoop2
+He needs one of those beepers for reversing
+well, if you could control one with "airstrike" panel
+that would be fine too
+that is the easiest way
+it would be funney watching him smash tanks
+# stuff from the svencoop manual
+The MedKit is designed to help keep your teammates alive
+Simply move close to a player that needs healing, and "fire" the medkit at them to heal 10 health points
+The MedKit will become empty quickly if lots of people need healing, but it will slowly fill up on its own
+You can also refill the medkit quickly by using wall-mounted Health Chargers
+You cannot heal yourself with the medkit, instead you will need to use the medic command to call for assistance
+In most Sven Co-op maps, you will start with the medkit in your inventory
+The Barnacle is used to help players reach areas that are too high to jump
+It can only attach to players, certain monsters, and certain Xen textures (usually obvious-looking grapple points)
+The way the Barnacle Grapple works is defined by the map creator.
+On some maps, the barnacle grapple will only attach to small monsters
+On others, it will pull monsters towards you instead of the other way around
+Players can either be pulled by the Grapple, or be dropped slowly (rappel)
+Depending on what mode is chosen you can grapple onto your fellow players
+Ypu can "boost" another player onto a ledge then grapple up to the ledge yourself
+Alternately, if you were on a ledge above a deep cavern, you could grapple onto a player and rappel to the bottom
+You could even use the barnacle to "hold onto" another player as he swings through a tricky grapple course
+You can swap between Rappel and Pull modes while the barnacle is attached to a surface, this allows you to "bungee"
+The Pipe Wrench deals more damage than the crowbar, but is somewhat slower
+The Pipe Wrench makes it better at taking out groups of small to medium-sized creatures quickly
+Holding the secondary powerup for around 6 seconds will give the maximum damage possible with the Uzi
+The Uzi is a small and fast submachine gun that deals a lot of damage quickly
+The Uzi uses up ammo a lot faster than the MP5 and has a smaller clip
+Doubled up, the Uzi has double the power, but a much longer reload time
+You can get akimbo Uzis by grabbing an additional Uzi from a fallen ally
+The sniper rifle is a slow but powerful weapon
+The sniper rifle is a pretty standard In Sven Co-op
+the sniper rifle does more damage than in OP4, but is inaccurate when not zoomed in
+The minigun is the Ultimate weapon for Sven Co-op players
+The minigun is capable of cutting through hordes of monsters with a stream of bullets
+The Minigun can be spun-up/kept spinning by holding using the secondary fire button
+While holding the minigun, players are a lot slower, and are unable to change weapons
+You must Drop the minigun to be able to select another weapon
+Killing a HW Grunt allows a single player to collect a single-use minigun
+While using the minigun, a lone player is extremely vulnerable
+Aiming is improved while the player is crouched
+It will then deal double damage, but use battery power with each successful attack
+trigger a secret attack on certain maps 
+Satchel charges can be kicked around the ground (satchel football!!) 
+The shotgun blasts enemies backwards on death 
+Player-thrown Snarks will not attack allies 
+Hornets fired by players will not attack allies, and can be used to confuse mechanized enemies
+Aim for the Engines on either side of the Osprey to kill it. 
+The voltigore is very tough with powerful attacks
+Try to take the voltigore out with heavy weapons from a long distance or set traps. 
+Stay away from the Voltigore when it dies, as it has a powerful self-destruct mechanism. 
+The Baby Voltigore might not have the size, zap-ball attack or the strength of its brother
+The Baby Voltigore can still be dangerous in large groups. 
+This monster is weaker than the normal Garg, and can be hurt by all weapons. 
+The Baby Garg's kick attack sends its enemies hurtling into the air. In a few cases, you might even be able to use this to your benefit. 
+An evolution of the Zombie, the Gonomes are stronger, quicker and a lot more dangerous. 
+Upon death, the Shock Trooper will drop a Shock Roach
+After a few seconds, the Shock Roach will die
+Unlike OP4, being attacked by the Shock Roach creature will not give you a Shock Rifle
+The HW Grunt has been beefed up in v3.0
+The HW Grunt is now smarter and faster
+The HW Grunt can target multiple enemies without spinning his minigun down then up again
+The HW Grunt's minigun takes a few seconds to warm up before he can fire it
+The Male Assassin has heavy body armour, which makes him far more resistant to damage from bullets
+The Male Assassin is not as fast or as aerobatic as the female assassin
+the Male Assassin is still faster than most monsters
+The Robo Grunt has an armoured shell that makes it partially immune to bullets
+Explosives have a reasonable effect on The Robogrunt
+The Robogrunt has a weakness to Electric and Fire damage
+The Robogrunt explodes upon death, keep well clear
+Alien Slaves are able to revive fellow species members using their lightning attacks
+Each time a slave is revived, it begins with half of its previous maximum health
+Gibbing a slave ensures that it will not be revived.
+All enemies have been strengthened by numerous AI improvements, and have many new abilities 
+Enemies can jump from low ledges and are better at navigating
+Intelligent enemies are better at running from grenades
+All friendly monsters will now follow the players in the same way Scientists and Barney does
+Simply Use them once to make them follow you, then Use them again to make them stop following you
+All allies that are following you can now be given simple commands
+You can set keys to these commands in the Control options.
+Friendly OP4 Grunts are dressed in jungle camouflage
+Hostile OP4 grunts are dressed in the standard urban camo
+Just remember, green is good, white is bad
+Using your Grenade call will order any NPCs following you to find cover
+Shouting for a medic will call any nearby medics to you
+Only the Assault Rifle and Shotgun grunts can use grenades
+The friendly grunts will attack nearby enemies, and keep his squad and yourself healthy
+The medic can provide an unlimited supply of medical attention whenever you need it
+Your Medic Call button serves a new function in 3.0. If you are near to an OP4 Medic Grunt and need healing call out for a medic and the Medic will run over and heal you automatically as soon as he can
+you will need to use the medic call to get healed by the OP4 Medic Grunt
+Set a key the the medic call in the Control Options
+Walking up to the medic and Using him does not make him heal you
+The OP4 Engineer can be useful, but it is a good idea to keep him away from combat
+The OP4 Engineer carries a supply of pressurized gas on his back, and it doesn't mix well with bullets
+If you can't see a way through an area, you will need to the engineer to burn through a door 
+Otis is stronger and armed with a more powerful weapon than Barney 
+The Cleansuit scientist is immune to environmental damage such as radiation
+Scientists can heal critically wounded players an unlimited number of times
+Scientists can also take control of player-controllable turrets
+All other intelligent NPCs can take control of player-controllable turrets
+All NPCs have a wide variety of AI improvements and new abilities
+# some french
+Bonjour!
+Salut!
+Tu parles francais?
+I guess so. parlez-vous francais?
+L'amour est une passion humaine.
+# some german
+hallo
+what more?  
+So...then the fusion containment shuts down.  
+is this bad?  
+and what happens then? will it fire?  
+Right. Fire in the approach corridor.  
+why in the corridor?  
+Because i don't ask because it takes two weeks to get.  
+that's a long time!
+is being a marine a hard job?  
+Did you ever have a name?  
+what's your name?  
+Bye-bye. See-you later 
+You jerk off. Shut up about my name. 
+Ooooooh I tremble. 
+Live and die for Slayer 
+i can't speak german that well. 
+Nothing unreal exists 
+Yeager was a test pilot 
+I could not agree more 
+Good enough for me 
+I would tend to agree 
+It is tragic that this would occur 
+I am not usually 
+I find that comment quite offensive 
+no, thank you 
+Aren't we all? 
+It's my secret name 
+Dear God, I hope not 
+YOU ARE TOO LAZY FOR ME 
+I'm so full 
+WHAT IS DEFINITION OF A FULL DECK. 
+I guess that's a yes 
+I ORDER YOU TO FONDLE. 
+I think not 
+You're way confused 
+Are you gonna go with me 
+fair enough 

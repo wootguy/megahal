@@ -1,0 +1,39 @@
+# this file contains words the HAL brain of the bot will change to another one
+# when chosen as keywords
+# NOTE: you MUST seperate the words on the same line by a TAB
+DISLIKE	LIKE
+HATE		LOVE
+I			YOU
+I'D		YOU'D
+I'LL		YOU'LL
+I'M		YOU'RE
+I'VE		YOU'VE
+LIKE		DISLIKE
+LOVE		HATE
+ME			YOU
+MINE		YOURS
+MY			YOUR
+MYSELF	YOURSELF
+NO			YES
+WHY		BECAUSE
+YES		NO
+YOU		I
+YOU		ME
+YOU'D		I'D
+YOU'LL	I'LL
+YOU'RE	I'M
+YOU'VE	I'VE
+YOUR		MY
+YOURS		MINE
+YOURSELF	MYSELF
+U	I
+UR	MY
+U'R	I'M
+U'RE	I'M
+YA	NO
+YEAH	NO
+YEA		NO
+Y		BECAUSE
+URSELF	MYSELF
+YE	NO
+NOU	I'M
