@@ -1,5 +1,3 @@
-#pragma once
-
 /*
  *  Copyright (C) 1998 Jason Hutchens
  *
@@ -20,6 +18,7 @@
  *  Oct 2023 - Modified by wootguy
  */
 
+#pragma once
 #include <string>
 
 struct HAL_STRING {
@@ -58,23 +57,37 @@ struct HAL_SWAP {
 // UTF-8 characters can be up to 4-bytes long
 #define HAL_MAX_REPLY_LEN (1024*4)
 
+// fallback paths for when individual personality files don't exist
+#define HAL_COMMON_SWP "common_hal.swp"
+#define HAL_COMMON_BAN "common_hal.ban"
+#define HAL_COMMON_AUX "common_hal.aux"
+#define HAL_COMMON_TRN "common_hal.trn"
+
 class MegaHal {
 public:
     ~MegaHal();
 
     // Initialize various brains and files.
-    // path = file path to a .brn file without the .brn extension
+    // brn/trn/ban/aux/swp files with the path prefix will be loaded if they exist,
+    // otherwise the fallback paths will be used (HAL_COMMON_*).
+    // path = file path to a .brn file without the .brn extension.
     void load_personality(const char* path);
 
     // Take string as input, and return allocated string as output.
     // string memory belongs to the class
-	char* do_reply(char* input);
+	char* do_reply(char* input, bool learnFromInput);
 
     // Take string as input, update model but don't generate reply.
 	void learn_no_reply(char* input);
 
     // Save the current state to a MegaHAL brain file.
 	void save_model();
+
+    // rapidly learn from a text file containing chat messages seperated by newlines
+    void train(const char* path);
+
+    // writes the model dictionary to a .dic file (same dir as the .brn) for training purposes
+    void write_dictionary();
 
 private:
     int order = 5;
@@ -94,10 +107,6 @@ private:
     bool used_key = false;
 
 	std::string brnpath;
-    std::string trnpath;
-    std::string banpath;
-    std::string auxpath;
-    std::string swppath;
 
     void add_aux(HAL_MODEL*, HAL_DICTIONARY*, HAL_STRING);
     void add_key(HAL_MODEL*, HAL_DICTIONARY*, HAL_STRING);
@@ -147,8 +156,6 @@ private:
     int search_dictionary(HAL_DICTIONARY*, HAL_STRING, bool*);
     int search_node(HAL_TREE*, int, bool*);
     int seed(HAL_MODEL*, HAL_DICTIONARY*);
-    void show_dictionary(HAL_DICTIONARY*);
-    void train(HAL_MODEL*, const char*);
     void update_context(HAL_MODEL*, int);
     void update_model(HAL_MODEL*, int);
     bool warn(char*, char*, ...);

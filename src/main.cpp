@@ -11,9 +11,10 @@ int main(int argc, char **argv)
     MegaHal hal = MegaHal();
 
     hal.load_personality("megahal");
+    hal.write_dictionary();
 
     // initial greeting
-    char* output = hal.do_reply("hi");
+    char* output = hal.do_reply("hi", false);
     printf(output);
     printf("\n");
 
@@ -25,7 +26,7 @@ int main(int argc, char **argv)
 	    if (command == "#quit")
 	        break;
 
-	    output = hal.do_reply((char*)command.c_str());
+	    output = hal.do_reply((char*)command.c_str(), true);
 
 	    printf(output);
 	    printf("\n");
