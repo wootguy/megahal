@@ -86,16 +86,18 @@ void MegaHal::load_personality(const char* path)
 char* MegaHal::do_reply(char *input, bool learnFromInput)
 {
     char* inputCopy = strdup(input);
-    char *output = NULL;
+    char* output = NULL;
 
     upper(inputCopy);
 
     make_words(inputCopy, words);
 
-    if (learnFromInput)
-        learn(model, words);
     output = generate_reply(model, words);
     capitalize(output);
+
+    if (learnFromInput)
+        learn(model, words);
+
     free(inputCopy);
     return output;
 }
