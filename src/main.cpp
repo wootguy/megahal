@@ -15,8 +15,7 @@ int main(int argc, char **argv)
 
     // initial greeting
     char* output = hal.do_reply("hi", false);
-    printf(output);
-    printf("\n");
+    printf("%s\n", output);
 
     while(1) {	
         printf("> ");
@@ -28,8 +27,7 @@ int main(int argc, char **argv)
 
 	    output = hal.do_reply((char*)command.c_str(), true);
 
-	    printf(output);
-	    printf("\n");
+	    printf("%s\n", output);
     }
 
     hal.save_model();
